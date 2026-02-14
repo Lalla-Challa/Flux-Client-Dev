@@ -36,22 +36,6 @@ export default function App() {
     return (
         <ErrorBoundary>
             <div className="flex flex-col h-screen w-screen bg-surface-0 text-text-primary overflow-hidden">
-                {/* ── Titlebar ── */}
-                <div className="titlebar-drag flex items-center h-9 bg-surface-1 border-b border-border px-3 shrink-0">
-                    <div className="titlebar-no-drag flex items-center gap-2">
-                        <div className="flex items-center gap-1.5">
-                            <img src="/logo.png" className="w-3.5 h-3.5 object-contain" alt="Logo" />
-                            <span className="text-xs font-semibold text-text-primary tracking-wide">
-                                Flux Client
-                            </span>
-                        </div>
-                    </div>
-                    <div className="flex-1" />
-                    <div className="titlebar-no-drag flex items-center gap-1">
-                        <span className="text-2xs text-text-tertiary font-mono">v1.0.0</span>
-                    </div>
-                </div>
-
                 {/* ── Main Content Area ── */}
                 <div className="flex flex-1 overflow-hidden">
                     {/* Account Sidebar (Slim) */}

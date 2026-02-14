@@ -46,29 +46,27 @@ export function CommitDetailsModal() {
     useEffect(() => {
         if (isOpen && activeRepoPath && commitHash && selectedFile) {
             setIsLoadingDiff(true);
-            // Default: Compare with parent (hash~1)
-            // Handle edge case for initial commit where hash~1 doesn't exist?
-            // try hash~1, if fail, try hash (which might be wrong for diff, but git show handles it)
-            // Actually getFileDiff uses `git diff`, which needs 2 commits.
-            // For initial commit, we can use 4b825dc642cb6eb9a060e54bf8d69288fbee4904 (empty tree)
-            // OR just use `git show hash:file` vs /dev/null?
-            // GitService.getFileDiff uses `git diff hash1 hash2 -- file`.
 
-            api().git.getFileDiff(activeRepoPath, selectedFile, `${commitHash}~1`, commitHash)
-                .then((d: string) => setDiff(d))
-                .catch(() => {
-                    // Fallback for initial commit or other errors: try just 'git show' style diff?
-                    // We can try getFileDiff with just hash1=commitHash (diff against working? No)
-                    // If hash~1 fails, it's likely initial commit.
-                    // We can try diffing against empty tree hash
-                    return api().git.getFileDiff(activeRepoPath, selectedFile, '4b825dc642cb6eb9a060e54bf8d69288fbee4904', commitHash);
-                })
-                .then((d: string) => setDiff(d))
-                .catch((err: any) => {
-                    console.error(err);
-                    setDiff(''); // No diff available
-                })
-                .finally(() => setIsLoadingDiff(false));
+            const fetchDiff = async () => {
+                try {
+                    // Compare with parent commit
+                    const d = await api().git.getFileDiff(activeRepoPath, selectedFile, `${commitHash}~1`, commitHash);
+                    setDiff(d || '');
+                } catch {
+                    try {
+                        // Fallback for initial commit: diff against empty tree
+                        const d = await api().git.getFileDiff(activeRepoPath, selectedFile, '4b825dc642cb6eb9a060e54bf8d69288fbee4904', commitHash);
+                        setDiff(d || '');
+                    } catch (err) {
+                        console.error(err);
+                        setDiff('');
+                    }
+                } finally {
+                    setIsLoadingDiff(false);
+                }
+            };
+
+            fetchDiff();
         }
     }, [isOpen, activeRepoPath, commitHash, selectedFile]);
 
@@ -188,8 +186,17 @@ export function CommitDetailsModal() {
                                 {diff ? (
                                     <DiffViewer diff={diff} />
                                 ) : (
-                                    <div className="flex items-center justify-center h-full text-text-tertiary text-sm">
-                                        {selectedFile ? 'No diff available' : 'Select a file to view changes'}
+                                    <div className="flex flex-col items-center justify-center h-full text-text-tertiary">
+                                        <svg className="w-10 h-10 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                                                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                        </svg>
+                                        <span className="text-sm font-medium text-text-secondary mb-1">
+                                            {selectedFile ? 'No Diff Available' : 'Select a File'}
+                                        </span>
+                                        <span className="text-xs">
+                                            {selectedFile ? 'This file may be binary or have no changes to display' : 'Click a file on the left to view its changes'}
+                                        </span>
                                     </div>
                                 )}
                             </div>

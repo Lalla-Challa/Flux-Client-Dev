@@ -134,11 +134,12 @@ export function ChangesTab() {
 
                 {fileStatuses.length === 0 && (
                     <div className="flex-1 flex flex-col items-center justify-center text-text-tertiary p-4">
-                        <svg className="w-8 h-8 mb-2 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="w-10 h-10 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                                 d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        <span className="text-xs">Working tree clean</span>
+                        <span className="text-sm font-medium text-text-secondary mb-1">All Clean</span>
+                        <span className="text-xs text-center">No uncommitted changes. Your working tree is clean.</span>
                     </div>
                 )}
             </div>

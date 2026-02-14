@@ -8,63 +8,130 @@ export function SettingsTab() {
     const activeRepoPath = useRepoStore((s) => s.activeRepoPath);
     const repos = useRepoStore((s) => s.repos);
     const cloudRepos = useRepoStore((s) => s.cloudRepos);
+    const loadCloudRepos = useRepoStore((s) => s.loadCloudRepos);
     const activeRepo = repos.find((r) => r.path === activeRepoPath);
 
     const accounts = useAccountStore((s) => s.accounts);
+    const activeAccountId = useAccountStore((s) => s.activeAccountId);
+    const currentAccount = accounts.find(a => a.id === activeAccountId);
 
-    // Find cloud counterpart
+    // Auto-load cloud repos if not loaded yet
+    useEffect(() => {
+        if (currentAccount?.token && cloudRepos.length === 0) {
+            loadCloudRepos(currentAccount.token).catch(() => {});
+        }
+    }, [currentAccount?.token, cloudRepos.length, loadCloudRepos]);
+
+    // Find cloud counterpart by matching remote URL
     const remoteUrl = activeRepo?.remoteUrl;
-    // Normalize URL for comparison (remove .git, ignore protocol?)
-    // For now, simple check
     const cloudRepo = cloudRepos.find((r) =>
         r.clone_url === remoteUrl ||
         r.ssh_url === remoteUrl ||
-        (remoteUrl && r.html_url === remoteUrl.replace('.git', ''))
+        (remoteUrl && r.html_url === remoteUrl.replace('.git', '')) ||
+        (remoteUrl && r.clone_url === remoteUrl.replace(/\/$/, '') + '.git') ||
+        (remoteUrl && remoteUrl === r.clone_url.replace(/\.git$/, ''))
     );
 
     const activeAccount = accounts.find(a => cloudRepo?.owner.login === a.username);
     const token = activeAccount?.token;
 
+    const isLoadingCloud = useRepoStore((s) => s.isLoadingCloud);
+
     if (!activeRepo) {
         return (
             <div className="flex flex-col items-center justify-center h-full text-text-tertiary">
-                <p>Select a repository to view settings</p>
+                <svg className="w-12 h-12 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-1.066 2.573c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <p className="text-sm font-medium mb-1">No Repository Selected</p>
+                <p className="text-xs">Select a repository from the sidebar to manage its settings</p>
             </div>
         );
     }
 
     return (
-        <div className="flex flex-col h-full p-6 overflow-y-auto">
-            <h2 className="text-xl font-bold mb-6">Repository Settings</h2>
+        <div className="flex flex-col h-full overflow-y-auto">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-border bg-surface-1 shrink-0">
+                <h2 className="text-lg font-bold">Repository Settings</h2>
+                <p className="text-xs text-text-tertiary mt-0.5">Manage local and GitHub settings for this repository</p>
+            </div>
 
-            {/* Local Settings */}
-            <section className="mb-8">
-                <h3 className="text-lg font-semibold mb-4 border-b border-border pb-2">General</h3>
-                <div className="space-y-4">
-                    <div className="flex flex-col gap-1">
-                        <label className="text-sm font-medium text-text-secondary">Local Path</label>
-                        <code className="bg-surface-2 px-3 py-2 rounded text-sm font-mono">{activeRepo.path}</code>
+            <div className="p-6">
+                {/* Local Settings */}
+                <section className="mb-8">
+                    <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-4">General</h3>
+                    <div className="space-y-4">
+                        <div className="flex flex-col gap-1">
+                            <label className="text-sm font-medium text-text-secondary">Local Path</label>
+                            <div className="flex items-center gap-2">
+                                <code className="bg-surface-2 px-3 py-2 rounded text-sm font-mono flex-1 truncate">{activeRepo.path}</code>
+                                <button
+                                    onClick={() => {
+                                        const api = (window as any).electronAPI;
+                                        api?.shell?.openPath(activeRepo.path);
+                                    }}
+                                    className="btn-ghost text-xs shrink-0"
+                                    title="Open in file explorer"
+                                >
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        {activeRepo.remoteUrl && (
+                            <div className="flex flex-col gap-1">
+                                <label className="text-sm font-medium text-text-secondary">Remote URL</label>
+                                <code className="bg-surface-2 px-3 py-2 rounded text-sm font-mono truncate">{activeRepo.remoteUrl}</code>
+                            </div>
+                        )}
                     </div>
-                </div>
-            </section>
+                </section>
 
-            {/* Cloud Settings */}
-            {cloudRepo && token ? (
-                <>
-                    <RenameSection repo={cloudRepo} token={token} localPath={activeRepo.path} />
-                    <DefaultBranchSection repo={cloudRepo} token={token} />
-                    <ProtectedBranchesSection repo={cloudRepo} token={token} />
-                    <CollaboratorsSection repo={cloudRepo} token={token} />
-                    <DangerZone repo={cloudRepo} token={token} />
-                </>
-            ) : (
-                <div className="p-4 bg-surface-2 rounded-lg border border-border">
-                    <p className="text-sm text-text-secondary">
-                        This repository is not linked to a GitHub repository or you don't have access.
-                    </p>
-                    {/* Add Publish button here later */}
-                </div>
-            )}
+                {/* Cloud Settings */}
+                {isLoadingCloud ? (
+                    <div className="flex items-center gap-3 p-6 bg-surface-2 rounded-lg border border-border">
+                        <svg className="w-5 h-5 animate-spin text-brand-500" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        <span className="text-sm text-text-secondary">Loading GitHub settings...</span>
+                    </div>
+                ) : cloudRepo && token ? (
+                    <>
+                        <RenameSection repo={cloudRepo} token={token} localPath={activeRepo.path} />
+                        <DefaultBranchSection repo={cloudRepo} token={token} />
+                        <ProtectedBranchesSection repo={cloudRepo} token={token} />
+                        <CollaboratorsSection repo={cloudRepo} token={token} />
+                        <DangerZone repo={cloudRepo} token={token} />
+                    </>
+                ) : (
+                    <div className="p-6 bg-surface-2 rounded-xl border border-border text-center">
+                        <svg className="w-10 h-10 mx-auto mb-3 text-text-tertiary opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                                d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                        </svg>
+                        <p className="text-sm font-medium text-text-secondary mb-1">Not Connected to GitHub</p>
+                        <p className="text-xs text-text-tertiary mb-4 max-w-sm mx-auto">
+                            {!currentAccount?.token
+                                ? 'Add a GitHub account to manage repository settings like branches, collaborators, and more.'
+                                : !remoteUrl
+                                    ? 'This repository has no remote URL. Publish it to GitHub to access cloud settings.'
+                                    : 'Could not match this repository to your GitHub account. Make sure the remote URL points to a repo you own.'}
+                        </p>
+                        {!remoteUrl && (
+                            <button
+                                onClick={() => useUIStore.getState().setActiveTab('branches')}
+                                className="btn-primary text-xs"
+                            >
+                                Publish to GitHub
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

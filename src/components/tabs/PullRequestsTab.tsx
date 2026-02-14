@@ -7,12 +7,22 @@ export function PullRequestsTab() {
     const activeRepoPath = useRepoStore((s) => s.activeRepoPath);
     const repos = useRepoStore((s) => s.repos);
     const cloudRepos = useRepoStore((s) => s.cloudRepos);
+    const loadCloudRepos = useRepoStore((s) => s.loadCloudRepos);
     const pullRequests = useRepoStore((s) => s.pullRequests);
     const isLoadingPRs = useRepoStore((s) => s.isLoadingPRs);
     const loadPullRequests = useRepoStore((s) => s.loadPullRequests);
     const checkoutPR = useRepoStore((s) => s.checkoutPR);
 
     const accounts = useAccountStore((s) => s.accounts);
+    const activeAccountId = useAccountStore((s) => s.activeAccountId);
+    const currentAccount = accounts.find(a => a.id === activeAccountId);
+
+    // Auto-load cloud repos if not loaded yet
+    useEffect(() => {
+        if (currentAccount?.token && cloudRepos.length === 0) {
+            loadCloudRepos(currentAccount.token).catch(() => {});
+        }
+    }, [currentAccount?.token, cloudRepos.length, loadCloudRepos]);
 
     const activeRepo = repos.find((r) => r.path === activeRepoPath);
     const remoteUrl = activeRepo?.remoteUrl;
@@ -20,7 +30,9 @@ export function PullRequestsTab() {
     const cloudRepo = cloudRepos.find((r) =>
         r.clone_url === remoteUrl ||
         r.ssh_url === remoteUrl ||
-        (remoteUrl && r.html_url === remoteUrl.replace('.git', ''))
+        (remoteUrl && r.html_url === remoteUrl.replace('.git', '')) ||
+        (remoteUrl && r.clone_url === remoteUrl.replace(/\/$/, '') + '.git') ||
+        (remoteUrl && remoteUrl === r.clone_url.replace(/\.git$/, ''))
     );
 
     const activeAccount = accounts.find(a => cloudRepo?.owner.login === a.username);
@@ -32,20 +44,47 @@ export function PullRequestsTab() {
         }
     }, [cloudRepo?.id, token, loadPullRequests]);
 
+    const isLoadingCloud = useRepoStore((s) => s.isLoadingCloud);
+    const remoteUrl_local = activeRepo?.remoteUrl;
+
     if (!activeRepo) {
         return (
             <div className="flex flex-col items-center justify-center h-full text-text-tertiary">
-                <p>Select a repository to view Pull Requests</p>
+                <svg className="w-12 h-12 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                </svg>
+                <p className="text-sm font-medium mb-1">No Repository Selected</p>
+                <p className="text-xs">Select a repository from the sidebar to view pull requests</p>
             </div>
         );
     }
 
     if (!cloudRepo || !token) {
         return (
-            <div className="flex flex-col items-center justify-center h-full text-text-tertiary p-4">
-                <p className="text-center">
-                    This repository is not linked to GitHub or you don't have access.
-                </p>
+            <div className="flex flex-col items-center justify-center h-full text-text-tertiary p-8">
+                {isLoadingCloud ? (
+                    <>
+                        <svg className="w-8 h-8 animate-spin text-brand-500 mb-3" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        <p className="text-sm text-text-secondary">Connecting to GitHub...</p>
+                    </>
+                ) : (
+                    <>
+                        <svg className="w-12 h-12 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                        </svg>
+                        <p className="text-sm font-medium mb-1">Pull Requests Unavailable</p>
+                        <p className="text-xs text-center max-w-xs">
+                            {!currentAccount?.token
+                                ? 'Add a GitHub account to view and manage pull requests.'
+                                : !remoteUrl_local
+                                    ? 'This repository has no remote URL. Publish it to GitHub first.'
+                                    : 'Could not match this repository to your GitHub account.'}
+                        </p>
+                    </>
+                )}
             </div>
         );
     }

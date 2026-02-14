@@ -11,6 +11,8 @@ export interface RepoInfo {
     status?: string;
     lastOpened?: number; // Unix timestamp
     accountId?: string;
+    remoteUrl?: string;
+    dirty?: boolean;
 }
 
 export interface FileStatus {
@@ -148,6 +150,13 @@ export const useRepoStore = create<RepoState>((set, get) => ({
             get().refreshStatus();
             get().refreshBranches();
             get().refreshLog();
+
+            // Auto-load cloud repos if not already loaded (needed for Settings/PRs tabs)
+            const accountStore = useAccountStore.getState();
+            const activeAccount = accountStore.accounts.find(a => a.id === accountStore.activeAccountId);
+            if (activeAccount?.token && get().cloudRepos.length === 0) {
+                get().loadCloudRepos(activeAccount.token).catch(() => {});
+            }
         }, 0);
     },
 
@@ -290,6 +299,9 @@ export const useRepoStore = create<RepoState>((set, get) => ({
                     // Push with -u flag automatically sets upstream
                     const currentBranch = await api().git.currentBranch(selectedPath);
                     await api().git.push(selectedPath, token, 'origin', currentBranch, true);
+
+                    // Refresh cloud repos so Settings/PRs tabs can find this repo
+                    await get().loadCloudRepos(token).catch(() => {});
                 }
             } else if (type === 'github' && token) {
                 // Create only on GitHub
@@ -322,11 +334,23 @@ export const useRepoStore = create<RepoState>((set, get) => ({
             });
 
             // Add remote and push
-            await api().git.addRemote(localPath, 'origin', ghRepo.clone_url);
+            try {
+                await api().git.addRemote(localPath, 'origin', ghRepo.clone_url);
+            } catch {
+                // Remote might already exist, update it
+                await api().git.setRemote(localPath, 'origin', ghRepo.clone_url);
+            }
 
             const currentBranch = await api().git.currentBranch(localPath);
             // Push with -u flag sets upstream automatically
             await api().git.push(localPath, token, 'origin', currentBranch, true);
+
+            // Update local repo's remoteUrl
+            set((state) => ({
+                repos: state.repos.map(r =>
+                    r.path === localPath ? { ...r, remoteUrl: ghRepo.clone_url } : r
+                )
+            }));
 
             // Refresh cloud repos
             await get().loadCloudRepos(token);
