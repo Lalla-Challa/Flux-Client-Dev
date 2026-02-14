@@ -1,0 +1,63 @@
+export const IPC_CHANNELS = {
+    WINDOW: {
+        MINIMIZE: 'window:minimize',
+        MAXIMIZE: 'window:maximize',
+        CLOSE: 'window:close',
+    },
+    AUTH: {
+        LOGIN: 'auth:login',
+        GET_ACCOUNTS: 'auth:getAccounts',
+        REMOVE_ACCOUNT: 'auth:removeAccount',
+        GET_TOKEN: 'auth:getToken',
+        CALLBACK: 'auth:callback',
+    },
+    REPO: {
+        SCAN: 'repo:scan',
+        DETECT_ACCOUNT: 'repo:detect-account',
+    },
+    GIT: {
+        STATUS: 'git:status',
+        STAGE: 'git:stage',
+        UNSTAGE: 'git:unstage',
+        COMMIT: 'git:commit',
+        PUSH: 'git:push',
+        PULL: 'git:pull',
+        SYNC: 'git:sync',
+        DIFF: 'git:diff',
+        LOG: 'git:log',
+        BRANCHES: 'git:branches',
+        CHECKOUT: 'git:checkout',
+        DELETE_BRANCH: 'git:deleteBranch',
+        STASH: 'git:stash',
+        STASH_POP: 'git:stashPop',
+        REVERT: 'git:revert',
+        CURRENT_BRANCH: 'git:currentBranch',
+        REMOTE_URL: 'git:remoteUrl',
+    },
+} as const;
+
+export const COLORS = {
+    BRAND: '#6366f1',
+    SURFACE_0: '#09090b',
+    SURFACE_1: '#0f0f12',
+    SURFACE_2: '#18181b',
+    SURFACE_3: '#1e1e22',
+    SURFACE_4: '#27272a',
+    TEXT_PRIMARY: '#fafafa',
+    TEXT_SECONDARY: '#a1a1aa',
+    TEXT_TERTIARY: '#71717a',
+    STATUS_ADDED: '#22c55e',
+    STATUS_MODIFIED: '#f59e0b',
+    STATUS_DELETED: '#ef4444',
+    STATUS_CONFLICT: '#f97316',
+} as const;
+
+export const KEYBOARD_SHORTCUTS = {
+    COMMIT: 'Ctrl+Enter',
+    SYNC: 'Ctrl+Shift+S',
+    TOGGLE_TERMINAL: 'Ctrl+`',
+    STAGE_ALL: 'Ctrl+Shift+A',
+    NEW_BRANCH: 'Ctrl+B',
+    SEARCH_REPOS: 'Ctrl+P',
+    REFRESH: 'F5',
+} as const;

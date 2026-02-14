@@ -1,0 +1,172 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-surface-0 text-text-primary font-sans;
+    user-select: none;
+    overflow: hidden;
+  }
+
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-surface-5 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-zinc-500;
+  }
+
+  /* Selection */
+  ::selection {
+    @apply bg-brand-500/30 text-text-primary;
+  }
+}
+
+@layer components {
+  /* Titlebar drag region */
+  .titlebar-drag {
+    -webkit-app-region: drag;
+  }
+
+  .titlebar-no-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  /* Glass effect panels */
+  .glass-panel {
+    @apply bg-surface-1/80 backdrop-blur-xl border border-border;
+  }
+
+  /* Sidebar item */
+  .sidebar-item {
+    @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-text-secondary
+           hover:bg-surface-3 hover:text-text-primary transition-all duration-150 cursor-pointer;
+  }
+
+  .sidebar-item.active {
+    @apply bg-surface-3 text-text-primary;
+  }
+
+  /* Tab styles */
+  .tab-button {
+    @apply px-4 py-2 text-sm font-medium text-text-tertiary
+           hover:text-text-secondary transition-colors duration-150 relative;
+  }
+
+  .tab-button.active {
+    @apply text-text-primary;
+  }
+
+  .tab-button.active::after {
+    content: '';
+    @apply absolute bottom-0 left-0 right-0 h-0.5 bg-brand-500 rounded-full;
+  }
+
+  /* Action button */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium
+           bg-brand-600 text-white rounded-lg hover:bg-brand-500
+           active:bg-brand-700 transition-all duration-150
+           focus:outline-none focus:ring-2 focus:ring-brand-500/50;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium
+           bg-surface-3 text-text-primary rounded-lg hover:bg-surface-4
+           active:bg-surface-5 transition-all duration-150 border border-border
+           focus:outline-none focus:ring-2 focus:ring-brand-500/50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm
+           text-text-secondary rounded-lg hover:bg-surface-3 hover:text-text-primary
+           transition-all duration-150;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium
+           bg-red-600/20 text-red-400 rounded-lg hover:bg-red-600/30
+           transition-all duration-150 border border-red-600/30;
+  }
+
+  /* Input field */
+  .input-field {
+    @apply w-full px-3 py-2 text-sm bg-surface-2 text-text-primary border border-border
+           rounded-lg placeholder:text-text-tertiary
+           focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30
+           transition-all duration-150;
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 text-2xs font-medium rounded-full;
+  }
+
+  .badge-branch {
+    @apply badge bg-brand-500/20 text-brand-400;
+  }
+
+  .badge-ahead {
+    @apply badge bg-green-500/20 text-green-400;
+  }
+
+  .badge-behind {
+    @apply badge bg-amber-500/20 text-amber-400;
+  }
+
+  /* Diff line styles */
+  .diff-added {
+    @apply bg-green-500/10 border-l-2 border-green-500;
+  }
+
+  .diff-removed {
+    @apply bg-red-500/10 border-l-2 border-red-500;
+  }
+
+  .diff-header {
+    @apply bg-brand-500/10 text-brand-400 font-mono text-xs;
+  }
+
+  /* Status indicator dots */
+  .status-dot {
+    @apply w-2 h-2 rounded-full;
+  }
+
+  .status-dot-added { @apply bg-status-added; }
+  .status-dot-modified { @apply bg-status-modified; }
+  .status-dot-deleted { @apply bg-status-deleted; }
+  .status-dot-conflict { @apply bg-status-conflict; }
+
+  /* Keyboard shortcut hint */
+  .kbd {
+    @apply inline-flex items-center justify-center min-w-[20px] px-1.5 py-0.5
+           text-2xs font-mono text-text-tertiary bg-surface-3 border border-border rounded;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-brand-400 to-purple-400 bg-clip-text text-transparent;
+  }
+}
