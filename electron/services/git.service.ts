@@ -35,6 +35,16 @@ export interface BranchInfo {
     lastCommit?: string;
 }
 
+export interface BlameInfo {
+    line: number;
+    hash: string;
+    shortHash: string;
+    author: string;
+    email: string;
+    date: string;
+    message: string;
+}
+
 export interface SyncResult {
     success: boolean;
     pulled: boolean;
@@ -509,6 +519,24 @@ export class GitService {
         }
     }
 
+    async checkoutFile(repoPath: string, file: string): Promise<void> {
+        // Discard changes to a specific file: git checkout HEAD -- <file>
+        // Note: For untracked files, this won't work (need clean -f). 
+        // But for 'modified' or 'deleted', this works.
+        const result = await this.exec(repoPath, ['checkout', 'HEAD', '--', file]);
+        if (result.code !== 0) {
+            throw new Error(`git checkout file failed: ${result.stderr}`);
+        }
+    }
+
+    async clean(repoPath: string, file: string): Promise<void> {
+        // Remove untracked file
+        const result = await this.exec(repoPath, ['clean', '-f', file]);
+        if (result.code !== 0) {
+            throw new Error(`git clean failed: ${result.stderr}`);
+        }
+    }
+
     async deleteBranch(repoPath: string, branch: string): Promise<void> {
         const result = await this.exec(repoPath, ['branch', '-D', branch]); // Force delete to be safe
         if (result.code !== 0) {
@@ -582,6 +610,22 @@ export class GitService {
         }
     }
 
+    async resolveConflict(repoPath: string, file: string, strategy: 'theirs' | 'ours'): Promise<void> {
+        const flag = strategy === 'theirs' ? '--theirs' : '--ours';
+
+        // 1. Checkout the version
+        const checkoutResult = await this.exec(repoPath, ['checkout', flag, file]);
+        if (checkoutResult.code !== 0) {
+            throw new Error(`git checkout ${flag} failed: ${checkoutResult.stderr}`);
+        }
+
+        // 2. Add the file (mark as resolved)
+        const addResult = await this.exec(repoPath, ['add', file]);
+        if (addResult.code !== 0) {
+            throw new Error(`git add failed: ${addResult.stderr}`);
+        }
+    }
+
     // ── Remote ──
 
     async getRemoteUrl(repoPath: string): Promise<string> {
@@ -626,6 +670,51 @@ export class GitService {
             await this.exec(repoPath, ['rebase', '--abort']).catch(() => { });
             throw new Error(`Rebase failed: ${result.stderr}`);
         }
+    }
+
+    async blame(repoPath: string, file: string): Promise<BlameInfo[]> {
+        // Use --line-porcelain to get full info for each line
+        const result = await this.exec(repoPath, ['blame', '--line-porcelain', file]);
+        if (result.code !== 0) {
+            throw new Error(`git blame failed: ${result.stderr}`);
+        }
+
+        const lines = result.stdout.split('\n');
+        const blameData: BlameInfo[] = [];
+        let currentInfo: Partial<BlameInfo> = {};
+        let currentLineNumber = 1;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (!line) continue;
+
+            if (line.match(/^[0-9a-f]{40} \d+ \d+/)) {
+                // New block starting with hash
+                const hash = line.split(' ')[0];
+                currentInfo = {
+                    hash,
+                    shortHash: hash.substring(0, 7),
+                    line: currentLineNumber
+                };
+            } else if (line.startsWith('author ')) {
+                currentInfo.author = line.substring(7);
+            } else if (line.startsWith('author-mail ')) {
+                currentInfo.email = line.substring(12); // Remove 'author-mail <' and '>'
+            } else if (line.startsWith('author-time ')) {
+                const timestamp = parseInt(line.substring(12), 10);
+                currentInfo.date = new Date(timestamp * 1000).toISOString();
+            } else if (line.startsWith('summary ')) {
+                currentInfo.message = line.substring(8);
+            } else if (line.startsWith('\t')) {
+                // Content line, ends the block
+                if (currentInfo.hash) {
+                    blameData.push(currentInfo as BlameInfo);
+                    currentLineNumber++;
+                }
+            }
+        }
+
+        return blameData;
     }
 
     // ── Clone ──
@@ -705,6 +794,117 @@ export class GitService {
         if (result.code !== 0) {
             throw new Error(`git remote set-url failed: ${result.stderr}`);
         }
+    }
+
+    // ── Tags ──
+
+    async listTags(repoPath: string): Promise<{ name: string; date: string; message: string; hash: string }[]> {
+        const result = await this.exec(repoPath, [
+            'tag', '-l', '--sort=-creatordate',
+            '--format=%(refname:short)|%(creatordate:iso)|%(subject)|%(objectname:short)'
+        ]);
+        if (result.code !== 0) return [];
+
+        return result.stdout
+            .split('\n')
+            .filter(Boolean)
+            .map(line => {
+                const [name, date, message, hash] = line.split('|');
+                return { name: name || '', date: date || '', message: message || '', hash: hash || '' };
+            });
+    }
+
+    async createTag(repoPath: string, tagName: string, message?: string, commitHash?: string): Promise<void> {
+        const args = ['tag'];
+        if (message) {
+            args.push('-a', tagName, '-m', message);
+        } else {
+            args.push(tagName);
+        }
+        if (commitHash) args.push(commitHash);
+
+        const result = await this.exec(repoPath, args);
+        if (result.code !== 0) {
+            throw new Error(`git tag failed: ${result.stderr}`);
+        }
+    }
+
+    async pushTag(repoPath: string, tagName: string, token: string): Promise<void> {
+        const result = await this.exec(repoPath, ['push', 'origin', tagName], token);
+        if (result.code !== 0) {
+            throw new Error(`git push tag failed: ${result.stderr}`);
+        }
+    }
+
+    async deleteTag(repoPath: string, tagName: string): Promise<void> {
+        const result = await this.exec(repoPath, ['tag', '-d', tagName]);
+        if (result.code !== 0) {
+            throw new Error(`git tag -d failed: ${result.stderr}`);
+        }
+    }
+
+    async deleteRemoteTag(repoPath: string, tagName: string, token: string): Promise<void> {
+        const result = await this.exec(repoPath, ['push', 'origin', `:refs/tags/${tagName}`], token);
+        if (result.code !== 0) {
+            throw new Error(`git push delete tag failed: ${result.stderr}`);
+        }
+    }
+
+    // ── Cherry-Pick ──
+
+    async cherryPick(repoPath: string, commitHash: string): Promise<void> {
+        const result = await this.exec(repoPath, ['cherry-pick', commitHash]);
+        if (result.code !== 0) {
+            throw new Error(`git cherry-pick failed: ${result.stderr}`);
+        }
+    }
+
+    // ── Squash / Reword ──
+
+    async squashCommits(repoPath: string, count: number, message: string): Promise<void> {
+        // Soft reset to undo N commits, keeping changes staged
+        const resetResult = await this.exec(repoPath, ['reset', '--soft', `HEAD~${count}`]);
+        if (resetResult.code !== 0) {
+            throw new Error(`git reset --soft failed: ${resetResult.stderr}`);
+        }
+        // Re-commit with the new combined message
+        const commitResult = await this.exec(repoPath, ['commit', '-m', message]);
+        if (commitResult.code !== 0) {
+            throw new Error(`git commit failed: ${commitResult.stderr}`);
+        }
+    }
+
+    async rewordCommit(repoPath: string, newMessage: string): Promise<void> {
+        const result = await this.exec(repoPath, ['commit', '--amend', '-m', newMessage]);
+        if (result.code !== 0) {
+            throw new Error(`git commit --amend failed: ${result.stderr}`);
+        }
+    }
+
+    async listFiles(repoPath: string): Promise<string[]> {
+        const result = await this.exec(repoPath, ['ls-files']);
+        if (result.code !== 0) {
+            throw new Error(`git ls-files failed: ${result.stderr}`);
+        }
+        return result.stdout.split('\n').filter(Boolean);
+    }
+
+    async getFileContent(repoPath: string, path: string, ref: string = 'HEAD'): Promise<string> {
+        // Use git show ref:path
+        // Need to handle paths with spaces or strange chars? git show handles it if quoted?
+        // exec spawns process, arguments are passed as array.
+        // path needs to be relative to repo root (which git show expects for ref:path syntax)
+        // Note: path passed here might be relative.
+        // git show expects forward slashes for paths in ref:path syntax
+        const normalizedPath = path.replace(/\\/g, '/');
+        const result = await this.exec(repoPath, ['show', `${ref}:${normalizedPath}`]);
+        if (result.code !== 0) {
+            // If file doesn't exist in that ref (new file), return empty string?
+            // Or throw?
+            // For diff (new file), original is empty.
+            return '';
+        }
+        return result.stdout;
     }
 }
 

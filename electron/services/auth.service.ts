@@ -103,7 +103,7 @@ export class AuthService {
         this.config = {
             clientId: process.env.GITHUB_CLIENT_ID || '',
             clientSecret: process.env.GITHUB_CLIENT_SECRET || '',
-            scopes: ['repo', 'read:user', 'user:email'],
+            scopes: ['repo', 'workflow', 'read:user', 'user:email'],
             callbackPort: 48462,
         };
     }

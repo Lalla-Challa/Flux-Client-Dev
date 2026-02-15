@@ -36,6 +36,18 @@ export interface ElectronAPI {
         addCollaborator: (token: string, owner: string, repo: string, username: string) => Promise<void>;
         removeCollaborator: (token: string, owner: string, repo: string, username: string) => Promise<void>;
         getPullRequests: (token: string, owner: string, repo: string) => Promise<any[]>;
+        listIssues: (token: string, owner: string, repo: string) => Promise<any[]>;
+        createPullRequest: (token: string, owner: string, repo: string, options: { title: string; body?: string; head: string; base: string }) => Promise<any>;
+        listCheckRuns: (token: string, owner: string, repo: string, ref: string) => Promise<any>;
+        syncFork: (token: string, owner: string, repo: string, branch: string) => Promise<any>;
+
+        // Actions
+        listWorkflows: (token: string, owner: string, repo: string) => Promise<{ total_count: number; workflows: any[] }>;
+        listWorkflowRuns: (token: string, owner: string, repo: string, workflowId?: number) => Promise<{ total_count: number; workflow_runs: any[] }>;
+        getWorkflowRunJobs: (token: string, owner: string, repo: string, runId: number) => Promise<{ total_count: number; jobs: any[] }>;
+        triggerWorkflow: (token: string, owner: string, repo: string, workflowId: number, ref: string, inputs?: any) => Promise<void>;
+        cancelWorkflowRun: (token: string, owner: string, repo: string, runId: number) => Promise<void>;
+        rerunWorkflow: (token: string, owner: string, repo: string, runId: number) => Promise<void>;
     };
 
     // Git operations
@@ -71,6 +83,20 @@ export interface ElectronAPI {
         merge: (repoPath: string, branch: string) => Promise<void>;
         rebase: (repoPath: string, branch: string) => Promise<void>;
         onCloneProgress: (callback: (message: string) => void) => void;
+        discardFile: (repoPath: string, file: string) => Promise<void>;
+        cleanFile: (repoPath: string, file: string) => Promise<void>;
+        resolveConflict: (repoPath: string, file: string, strategy: 'theirs' | 'ours') => Promise<void>;
+        blame: (repoPath: string, file: string) => Promise<BlameInfo[]>;
+        listFiles: (repoPath: string) => Promise<string[]>;
+        getFileContent: (repoPath: string, path: string, ref?: string) => Promise<string>;
+        listTags: (repoPath: string) => Promise<{ name: string; date: string; message: string; hash: string }[]>;
+        createTag: (repoPath: string, tagName: string, message?: string, commitHash?: string) => Promise<void>;
+        pushTag: (repoPath: string, tagName: string, token: string) => Promise<void>;
+        deleteTag: (repoPath: string, tagName: string) => Promise<void>;
+        deleteRemoteTag: (repoPath: string, tagName: string, token: string) => Promise<void>;
+        cherryPick: (repoPath: string, commitHash: string) => Promise<void>;
+        squashCommits: (repoPath: string, count: number, message: string) => Promise<void>;
+        rewordCommit: (repoPath: string, newMessage: string) => Promise<void>;
     };
 
     // Dialog
@@ -87,6 +113,7 @@ export interface ElectronAPI {
     // File System
     fs: {
         writeFile: (path: string, content: string) => Promise<void>;
+        readFile: (path: string) => Promise<string>;
         checkFileExists: (path: string) => Promise<boolean>;
     };
 }
@@ -130,6 +157,16 @@ export interface BranchInfo {
     current: boolean;
     remote: boolean;
     lastCommit?: string;
+}
+
+export interface BlameInfo {
+    line: number;
+    hash: string;
+    shortHash: string;
+    author: string;
+    email: string;
+    date: string;
+    message: string;
 }
 
 export interface SyncResult {
@@ -220,6 +257,18 @@ const electronAPI: ElectronAPI = {
         addCollaborator: (token: string, owner: string, repo: string, username: string) => ipcRenderer.invoke('github:addCollaborator', token, owner, repo, username),
         removeCollaborator: (token: string, owner: string, repo: string, username: string) => ipcRenderer.invoke('github:removeCollaborator', token, owner, repo, username),
         getPullRequests: (token: string, owner: string, repo: string) => ipcRenderer.invoke('github:getPullRequests', token, owner, repo),
+        listIssues: (token, owner, repo) => ipcRenderer.invoke('github:listIssues', token, owner, repo),
+        createPullRequest: (token, owner, repo, options) => ipcRenderer.invoke('github:createPullRequest', token, owner, repo, options),
+        listCheckRuns: (token, owner, repo, ref) => ipcRenderer.invoke('github:listCheckRuns', token, owner, repo, ref),
+        syncFork: (token, owner, repo, branch) => ipcRenderer.invoke('github:syncFork', token, owner, repo, branch),
+
+        // Actions
+        listWorkflows: (token, owner, repo) => ipcRenderer.invoke('github:listWorkflows', token, owner, repo),
+        listWorkflowRuns: (token, owner, repo, workflowId) => ipcRenderer.invoke('github:listWorkflowRuns', token, owner, repo, workflowId),
+        getWorkflowRunJobs: (token, owner, repo, runId) => ipcRenderer.invoke('github:getWorkflowRunJobs', token, owner, repo, runId),
+        triggerWorkflow: (token, owner, repo, workflowId, ref, inputs) => ipcRenderer.invoke('github:triggerWorkflow', token, owner, repo, workflowId, ref, inputs),
+        cancelWorkflowRun: (token, owner, repo, runId) => ipcRenderer.invoke('github:cancelWorkflowRun', token, owner, repo, runId),
+        rerunWorkflow: (token, owner, repo, runId) => ipcRenderer.invoke('github:rerunWorkflow', token, owner, repo, runId),
     },
 
     git: {
@@ -259,6 +308,20 @@ const electronAPI: ElectronAPI = {
         onCloneProgress: (callback) => {
             ipcRenderer.on('git:cloneProgress', (_event, message) => callback(message));
         },
+        discardFile: (repoPath, file) => ipcRenderer.invoke('git:discardFile', repoPath, file),
+        cleanFile: (repoPath, file) => ipcRenderer.invoke('git:cleanFile', repoPath, file),
+        resolveConflict: (repoPath, file, strategy) => ipcRenderer.invoke('git:resolveConflict', repoPath, file, strategy),
+        blame: (repoPath, file) => ipcRenderer.invoke('git:blame', repoPath, file),
+        listFiles: (repoPath: string) => ipcRenderer.invoke('git:listFiles', repoPath),
+        getFileContent: (repoPath: string, path: string, ref?: string) => ipcRenderer.invoke('git:getFileContent', repoPath, path, ref),
+        listTags: (repoPath: string) => ipcRenderer.invoke('git:listTags', repoPath),
+        createTag: (repoPath: string, tagName: string, message?: string, commitHash?: string) => ipcRenderer.invoke('git:createTag', repoPath, tagName, message, commitHash),
+        pushTag: (repoPath: string, tagName: string, token: string) => ipcRenderer.invoke('git:pushTag', repoPath, tagName, token),
+        deleteTag: (repoPath: string, tagName: string) => ipcRenderer.invoke('git:deleteTag', repoPath, tagName),
+        deleteRemoteTag: (repoPath: string, tagName: string, token: string) => ipcRenderer.invoke('git:deleteRemoteTag', repoPath, tagName, token),
+        cherryPick: (repoPath: string, commitHash: string) => ipcRenderer.invoke('git:cherryPick', repoPath, commitHash),
+        squashCommits: (repoPath: string, count: number, message: string) => ipcRenderer.invoke('git:squashCommits', repoPath, count, message),
+        rewordCommit: (repoPath: string, newMessage: string) => ipcRenderer.invoke('git:rewordCommit', repoPath, newMessage),
     },
 
     dialog: {
@@ -272,6 +335,7 @@ const electronAPI: ElectronAPI = {
 
     fs: {
         writeFile: (path, content) => ipcRenderer.invoke('fs:writeFile', path, content),
+        readFile: (path) => ipcRenderer.invoke('fs:readFile', path),
         checkFileExists: (path: string) => ipcRenderer.invoke('fs:exists', path),
     },
 };

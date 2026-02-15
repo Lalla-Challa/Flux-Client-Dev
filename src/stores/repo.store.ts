@@ -39,6 +39,23 @@ export interface BranchInfo {
     lastCommit?: string;
 }
 
+export interface TagInfo {
+    name: string;
+    date: string;
+    message: string;
+    hash: string;
+}
+
+export interface BlameInfo {
+    line: number;
+    hash: string;
+    shortHash: string;
+    author: string;
+    email: string;
+    date: string;
+    message: string;
+}
+
 interface RepoState {
     repos: RepoInfo[];
     activeRepoPath: string | null;
@@ -56,6 +73,12 @@ interface RepoState {
     branches: BranchInfo[];
     currentDiff: string;
     isLoadingStatus: boolean;
+
+    // Blame
+    blameData: BlameInfo[] | null;
+    isLoadingBlame: boolean;
+    loadBlame: (file: string) => Promise<void>;
+    clearBlame: () => void;
 
     // Actions
     setActiveRepo: (path: string) => void;
@@ -88,6 +111,13 @@ interface RepoState {
     isLoadingPRs: boolean;
     loadPullRequests: (token: string, repo: GitHubRepo) => Promise<void>;
     checkoutPR: (pr: any) => Promise<void>;
+    createPullRequest: (token: string, repo: GitHubRepo, title: string, body: string, head: string, base: string) => Promise<void>;
+    listCheckRuns: (token: string, repo: GitHubRepo, ref: string) => Promise<any[]>;
+    syncFork: (token: string, repo: GitHubRepo) => Promise<void>;
+
+    issues: any[];
+    isLoadingIssues: boolean;
+    listIssues: (token: string, repo: GitHubRepo) => Promise<void>;
 
     refreshStatus: () => Promise<void>;
     refreshBranches: () => Promise<void>;
@@ -107,10 +137,33 @@ interface RepoState {
     deleteRemoteBranch: (remote: string, branch: string, token: string) => Promise<void>;
     stashChanges: () => Promise<void>;
     popStash: () => Promise<void>;
+    discardChanges: (file: string) => Promise<void>;
+    cleanFile: (file: string) => Promise<void>;
+    resolveConflict: (file: string, strategy: 'theirs' | 'ours') => Promise<void>;
     revertLastCommit: () => Promise<void>;
     undoLastCommit: () => Promise<void>;
     deleteLastCommit: () => Promise<void>;
     checkoutCommit: (hash: string) => Promise<void>;
+
+    // Tags
+    tags: TagInfo[];
+    isLoadingTags: boolean;
+    loadTags: () => Promise<void>;
+    createTag: (tagName: string, message?: string, commitHash?: string) => Promise<void>;
+    pushTag: (tagName: string) => Promise<void>;
+    deleteTag: (tagName: string) => Promise<void>;
+
+    // Cherry-pick
+    cherryPick: (hash: string) => Promise<void>;
+
+    // Squash / Reword
+    squashCommits: (count: number, message: string) => Promise<void>;
+    rewordCommit: (message: string) => Promise<void>;
+
+    // Monaco Diff
+    diffCtx: { original: string; modified: string; language: string; file: string } | null;
+    isLoadingDiff: boolean;
+    loadDiffContext: (file: string) => Promise<void>;
 }
 
 const api = () => (window as any).electronAPI;
@@ -121,17 +174,38 @@ export const useRepoStore = create<RepoState>((set, get) => ({
     isScanning: false,
     cloudRepos: [],
     isLoadingCloud: false,
-
     cloneProgress: null,
 
     pullRequests: [],
     isLoadingPRs: false,
+
+    issues: [],
+    isLoadingIssues: false,
 
     fileStatuses: [],
     commits: [],
     branches: [],
     currentDiff: '',
     isLoadingStatus: false,
+
+    blameData: null,
+    isLoadingBlame: false,
+
+    loadBlame: async (file) => {
+        const { activeRepoPath } = get();
+        if (!activeRepoPath) return;
+
+        set({ isLoadingBlame: true });
+        try {
+            const blameData = await api().git.blame(activeRepoPath, file);
+            set({ blameData, isLoadingBlame: false });
+        } catch (error) {
+            console.error('Failed to load blame:', error);
+            set({ blameData: [], isLoadingBlame: false });
+        }
+    },
+
+    clearBlame: () => set({ blameData: null }),
 
     setActiveRepo: (path) => {
         // Update lastOpened timestamp
@@ -155,7 +229,7 @@ export const useRepoStore = create<RepoState>((set, get) => ({
             const accountStore = useAccountStore.getState();
             const activeAccount = accountStore.accounts.find(a => a.id === accountStore.activeAccountId);
             if (activeAccount?.token && get().cloudRepos.length === 0) {
-                get().loadCloudRepos(activeAccount.token).catch(() => {});
+                get().loadCloudRepos(activeAccount.token).catch(() => { });
             }
         }, 0);
     },
@@ -301,7 +375,7 @@ export const useRepoStore = create<RepoState>((set, get) => ({
                     await api().git.push(selectedPath, token, 'origin', currentBranch, true);
 
                     // Refresh cloud repos so Settings/PRs tabs can find this repo
-                    await get().loadCloudRepos(token).catch(() => {});
+                    await get().loadCloudRepos(token).catch(() => { });
                 }
             } else if (type === 'github' && token) {
                 // Create only on GitHub
@@ -417,6 +491,19 @@ export const useRepoStore = create<RepoState>((set, get) => ({
         }
     },
 
+    listIssues: async (token, repo) => {
+        set({ isLoadingIssues: true });
+        try {
+            const issues = await api().github.listIssues(token, repo.owner.login, repo.name);
+            set({ issues });
+        } catch (error) {
+            console.error('Failed to load issues:', error);
+            set({ issues: [] });
+        } finally {
+            set({ isLoadingIssues: false });
+        }
+    },
+
     checkoutPR: async (pr) => {
         const { activeRepoPath } = get();
         if (!activeRepoPath) return;
@@ -425,9 +512,52 @@ export const useRepoStore = create<RepoState>((set, get) => ({
             await api().git.checkoutPullRequest(activeRepoPath, pr.number);
             await get().refreshStatus();
             await get().refreshBranches();
-        } catch (error) {
+            useUIStore.getState().showNotification('success', `Checked out PR #${pr.number}`);
+        } catch (error: any) {
             console.error('Failed to checkout PR:', error);
+            useUIStore.getState().showNotification('error', error.message);
             throw error;
+        }
+    },
+
+    createPullRequest: async (token, repo, title, body, head, base) => {
+        set({ isLoadingPRs: true });
+        try {
+            const pr = await api().github.createPullRequest(token, repo.owner.login, repo.name, {
+                title,
+                body,
+                head,
+                base
+            });
+            useUIStore.getState().showNotification('success', `Created PR #${pr.number}`);
+            // Reload PRs
+            await get().loadPullRequests(token, repo);
+        } catch (error: any) {
+            console.error('Failed to create PR:', error);
+            useUIStore.getState().showNotification('error', error.message);
+            throw error;
+        } finally {
+            set({ isLoadingPRs: false });
+        }
+    },
+
+    listCheckRuns: async (token, repo, ref) => {
+        try {
+            const data = await api().github.listCheckRuns(token, repo.owner.login, repo.name, ref);
+            return data.check_runs;
+        } catch (error) {
+            console.error('Failed to load check runs:', error);
+            return [];
+        }
+    },
+
+    syncFork: async (token, repo) => {
+        try {
+            await api().github.syncFork(token, repo.owner.login, repo.name, 'main'); // Default to main
+            useUIStore.getState().showNotification('success', 'Fork synced with upstream!');
+        } catch (error: any) {
+            console.error('Failed to sync fork:', error);
+            useUIStore.getState().showNotification('error', error.message);
         }
     },
 
@@ -710,6 +840,52 @@ export const useRepoStore = create<RepoState>((set, get) => ({
         get().refreshStatus();
     },
 
+    discardChanges: async (file: string) => {
+        const { activeRepoPath } = get();
+        if (!activeRepoPath) return;
+
+        try {
+            await api().git.discardFile(activeRepoPath, file);
+            get().refreshStatus();
+        } catch (error: any) {
+            console.error('Failed to discard changes:', error);
+            useUIStore.getState().showNotification('error', `Discard failed: ${error.message}`);
+        }
+    },
+
+    cleanFile: async (file: string) => {
+        const { activeRepoPath } = get();
+        if (!activeRepoPath) return;
+
+        try {
+            await api().git.cleanFile(activeRepoPath, file);
+            get().refreshStatus();
+        } catch (error: any) {
+            console.error('Failed to clean file:', error);
+            useUIStore.getState().showNotification('error', `Clean failed: ${error.message}`);
+        }
+    },
+
+    resolveConflict: async (file: string, strategy: 'theirs' | 'ours') => {
+        const { activeRepoPath } = get();
+        if (!activeRepoPath) return;
+
+        try {
+            await api().git.resolveConflict(activeRepoPath, file, strategy);
+
+            // Refresh status to see if conflict is gone
+            get().refreshStatus();
+
+            // Load diff (now resolved)
+            get().loadDiff(file);
+
+            useUIStore.getState().showNotification('success', `Resolved conflict using ${strategy}`);
+        } catch (error: any) {
+            console.error('Failed to resolve conflict:', error);
+            useUIStore.getState().showNotification('error', `Resolve failed: ${error.message}`);
+        }
+    },
+
     revertLastCommit: async () => {
         const { activeRepoPath } = get();
         if (!activeRepoPath) return;
@@ -774,6 +950,158 @@ export const useRepoStore = create<RepoState>((set, get) => ({
             useUIStore.getState().showNotification('success', `Checked out ${hash.substring(0, 7)}`);
         } catch (error: any) {
             useUIStore.getState().showNotification('error', error.message);
+        }
+    },
+    // Tags
+    tags: [],
+    isLoadingTags: false,
+
+    loadTags: async () => {
+        const { activeRepoPath } = get();
+        if (!activeRepoPath) return;
+
+        set({ isLoadingTags: true });
+        try {
+            const tags = await api().git.listTags(activeRepoPath);
+            set({ tags, isLoadingTags: false });
+        } catch (error) {
+            console.error('Failed to load tags:', error);
+            set({ tags: [], isLoadingTags: false });
+        }
+    },
+
+    createTag: async (tagName, message, commitHash) => {
+        const { activeRepoPath } = get();
+        if (!activeRepoPath) return;
+
+        try {
+            await api().git.createTag(activeRepoPath, tagName, message, commitHash);
+            useUIStore.getState().showNotification('success', `Created tag ${tagName}`);
+            get().loadTags();
+        } catch (error: any) {
+            console.error('Failed to create tag:', error);
+            useUIStore.getState().showNotification('error', error.message);
+            throw error;
+        }
+    },
+
+    pushTag: async (tagName) => {
+        const { activeRepoPath } = get();
+        if (!activeRepoPath) return;
+
+        const accountStore = useAccountStore.getState();
+        const repo = get().repos.find((r) => r.path === activeRepoPath);
+        const accountId = repo?.accountId || accountStore.activeAccountId;
+        const account = accountStore.accounts.find((a) => a.id === accountId);
+
+        if (!account?.token) {
+            useUIStore.getState().showNotification('error', 'No GitHub account connected');
+            return;
+        }
+
+        try {
+            await api().git.pushTag(activeRepoPath, tagName, account.token);
+            useUIStore.getState().showNotification('success', `Pushed tag ${tagName}`);
+        } catch (error: any) {
+            console.error('Failed to push tag:', error);
+            useUIStore.getState().showNotification('error', error.message);
+        }
+    },
+
+    deleteTag: async (tagName) => {
+        const { activeRepoPath } = get();
+        if (!activeRepoPath) return;
+
+        try {
+            await api().git.deleteTag(activeRepoPath, tagName);
+            useUIStore.getState().showNotification('success', `Deleted tag ${tagName}`);
+            get().loadTags();
+        } catch (error: any) {
+            console.error('Failed to delete tag:', error);
+            useUIStore.getState().showNotification('error', error.message);
+        }
+    },
+
+    // Cherry-pick
+    cherryPick: async (hash) => {
+        const { activeRepoPath } = get();
+        if (!activeRepoPath) return;
+
+        try {
+            await api().git.cherryPick(activeRepoPath, hash);
+            useUIStore.getState().showNotification('success', `Cherry-picked ${hash.substring(0, 7)}`);
+            get().refreshStatus();
+            get().refreshLog();
+        } catch (error: any) {
+            console.error('Failed to cherry-pick:', error);
+            useUIStore.getState().showNotification('error', error.message);
+            throw error;
+        }
+    },
+
+    // Squash / Reword
+    squashCommits: async (count, message) => {
+        const { activeRepoPath } = get();
+        if (!activeRepoPath) return;
+
+        try {
+            await api().git.squashCommits(activeRepoPath, count, message);
+            useUIStore.getState().showNotification('success', `Squashed ${count} commits`);
+            get().refreshStatus();
+            get().refreshLog();
+        } catch (error: any) {
+            console.error('Failed to squash commits:', error);
+            useUIStore.getState().showNotification('error', error.message);
+            throw error;
+        }
+    },
+
+    rewordCommit: async (message) => {
+        const { activeRepoPath } = get();
+        if (!activeRepoPath) return;
+
+        try {
+            await api().git.rewordCommit(activeRepoPath, message);
+            useUIStore.getState().showNotification('success', 'Commit message updated');
+            get().refreshLog();
+        } catch (error: any) {
+            console.error('Failed to reword commit:', error);
+            useUIStore.getState().showNotification('error', error.message);
+            throw error;
+        }
+    },
+
+    diffCtx: null,
+    isLoadingDiff: false,
+    loadDiffContext: async (file: string) => {
+        const { activeRepoPath } = get();
+        if (!activeRepoPath) return;
+
+        set({ isLoadingDiff: true, diffCtx: null });
+        try {
+            const ext = file.split('.').pop();
+            const language = ext === 'ts' ? 'typescript' : ext === 'js' ? 'javascript' : ext === 'json' ? 'json' : 'text';
+
+            const status = get().fileStatuses.find(s => s.path === file);
+
+            let original = '';
+            let modified = '';
+
+            if (status?.status === 'untracked' || status?.status === 'added') {
+                original = '';
+                modified = await api().fs.readFile(`${activeRepoPath}\\${file}`);
+            } else if (status?.status === 'deleted') {
+                original = await api().git.getFileContent(activeRepoPath, file, 'HEAD');
+                modified = '';
+            } else {
+                original = await api().git.getFileContent(activeRepoPath, file, 'HEAD');
+                modified = await api().fs.readFile(`${activeRepoPath}\\${file}`);
+            }
+
+            set({ diffCtx: { original, modified, language, file }, isLoadingDiff: false });
+        } catch (error) {
+            console.error('Failed to load diff context:', error);
+            set({ diffCtx: null, isLoadingDiff: false });
         }
     },
 }));

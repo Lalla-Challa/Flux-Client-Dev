@@ -9,6 +9,9 @@ import { BranchesTab } from '../tabs/BranchesTab';
 import { CloudReposTab } from '../tabs/CloudReposTab';
 import { SettingsTab } from '../tabs/SettingsTab';
 import { PullRequestsTab } from '../tabs/PullRequestsTab';
+import { ActionsTab } from '../tabs/ActionsTab';
+import { IssuesTab } from '../tabs/IssuesTab';
+import { FilesTab } from '../tabs/FilesTab';
 import { NewRepoModal } from '../modals/NewRepoModal';
 import { CommitDetailsModal } from '../modals/CommitDetailsModal';
 import { CloneModal } from '../modals/CloneModal';
@@ -26,6 +29,16 @@ const TABS: { id: TabId; label: string; tooltip: string; icon: JSX.Element }[] =
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                     d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+        ),
+    },
+    {
+        id: 'files',
+        label: 'Files',
+        tooltip: 'Browse files',
+        icon: (
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
         ),
     },
@@ -80,6 +93,27 @@ const TABS: { id: TabId; label: string; tooltip: string; icon: JSX.Element }[] =
         icon: (
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+            </svg>
+        ),
+    },
+    {
+        id: 'actions',
+        label: 'Actions',
+        tooltip: 'GitHub Actions',
+        icon: (
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+        ),
+    },
+    {
+        id: 'issues',
+        label: 'Issues',
+        tooltip: 'View open issues',
+        icon: (
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
         ),
     },
@@ -210,11 +244,14 @@ export function MainView() {
                         className="h-full"
                     >
                         {activeTab === 'changes' && <ChangesTab />}
+                        {activeTab === 'files' && <FilesTab />}
                         {activeTab === 'history' && <HistoryTab />}
                         {activeTab === 'branches' && <BranchesTab />}
                         {activeTab === 'cloud' && <CloudReposTab />}
                         {activeTab === 'settings' && <SettingsTab />}
                         {activeTab === 'pull-requests' && <PullRequestsTab />}
+                        {activeTab === 'actions' && <ActionsTab />}
+                        {activeTab === 'issues' && <IssuesTab />}
                     </motion.div>
                 )}
             </div>

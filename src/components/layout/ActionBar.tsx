@@ -96,6 +96,20 @@ export function ActionBar() {
                     Stash
                 </button>
 
+                {/* Pop Stash */}
+                <button
+                    onClick={() => useRepoStore.getState().popStash()}
+                    disabled={noRepo}
+                    className={`btn-ghost text-xs ${noRepo ? 'opacity-40 cursor-not-allowed' : ''}`}
+                    title="Apply latest stash and drop it"
+                >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8 m-9 4h4" />
+                    </svg>
+                    Pop
+                </button>
+
                 {/* Undo last commit */}
                 <button
                     onClick={() => useRepoStore.getState().undoLastCommit()}

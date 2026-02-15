@@ -207,6 +207,47 @@ function registerIpcHandlers(): void {
         return githubService.removeBranchProtection(token, owner, repo, branch);
     });
 
+    // ── Actions ──
+    ipcMain.handle('github:listWorkflows', async (_event, token: string, owner: string, repo: string) => {
+        return githubService.listWorkflows(token, owner, repo);
+    });
+
+    ipcMain.handle('github:listWorkflowRuns', async (_event, token: string, owner: string, repo: string, workflowId?: number) => {
+        return githubService.listWorkflowRuns(token, owner, repo, workflowId);
+    });
+
+    ipcMain.handle('github:getWorkflowRunJobs', async (_event, token: string, owner: string, repo: string, runId: number) => {
+        return githubService.getWorkflowRunJobs(token, owner, repo, runId);
+    });
+
+    ipcMain.handle('github:triggerWorkflow', async (_event, token: string, owner: string, repo: string, workflowId: number, ref: string, inputs?: any) => {
+        return githubService.triggerWorkflow(token, owner, repo, workflowId, ref, inputs);
+    });
+
+    ipcMain.handle('github:cancelWorkflowRun', async (_event, token: string, owner: string, repo: string, runId: number) => {
+        return githubService.cancelWorkflowRun(token, owner, repo, runId);
+    });
+
+    ipcMain.handle('github:rerunWorkflow', async (_event, token: string, owner: string, repo: string, runId: number) => {
+        return githubService.rerunWorkflow(token, owner, repo, runId);
+    });
+
+    ipcMain.handle('github:listIssues', async (_event, token: string, owner: string, repo: string) => {
+        return githubService.listIssues(token, owner, repo);
+    });
+
+    ipcMain.handle('github:createPullRequest', async (_event, token: string, owner: string, repo: string, options: any) => {
+        return githubService.createPullRequest(token, owner, repo, options);
+    });
+
+    ipcMain.handle('github:listCheckRuns', async (_event, token: string, owner: string, repo: string, ref: string) => {
+        return githubService.listCheckRuns(token, owner, repo, ref);
+    });
+
+    ipcMain.handle('github:syncFork', async (_event, token: string, owner: string, repo: string, branch: string) => {
+        return githubService.syncFork(token, owner, repo, branch);
+    });
+
     // ── Git Operations ──
     ipcMain.handle('git:status', async (_event, repoPath: string) => {
         return gitService.status(repoPath);
@@ -346,6 +387,60 @@ function registerIpcHandlers(): void {
         return gitService.rebase(repoPath, branch);
     });
 
+    ipcMain.handle('git:discardFile', async (_event, repoPath: string, file: string) => {
+        return gitService.checkoutFile(repoPath, file);
+    });
+
+    ipcMain.handle('git:cleanFile', async (_event, repoPath: string, file: string) => {
+        return gitService.clean(repoPath, file);
+    });
+
+    ipcMain.handle('git:resolveConflict', async (_event, repoPath: string, file: string, strategy: 'theirs' | 'ours') => {
+        return gitService.resolveConflict(repoPath, file, strategy);
+    });
+
+    ipcMain.handle('git:blame', async (_event, repoPath: string, file: string) => {
+        return gitService.blame(repoPath, file);
+    });
+
+    // ── Tags ──
+    ipcMain.handle('git:listTags', async (_event, repoPath: string) => {
+        return gitService.listTags(repoPath);
+    });
+    ipcMain.handle('git:createTag', async (_event, repoPath: string, tagName: string, message?: string, commitHash?: string) => {
+        return gitService.createTag(repoPath, tagName, message, commitHash);
+    });
+    ipcMain.handle('git:pushTag', async (_event, repoPath: string, tagName: string, token: string) => {
+        return gitService.pushTag(repoPath, tagName, token);
+    });
+    ipcMain.handle('git:deleteTag', async (_event, repoPath: string, tagName: string) => {
+        return gitService.deleteTag(repoPath, tagName);
+    });
+    ipcMain.handle('git:deleteRemoteTag', async (_event, repoPath: string, tagName: string, token: string) => {
+        return gitService.deleteRemoteTag(repoPath, tagName, token);
+    });
+
+    // ── Cherry-Pick ──
+    ipcMain.handle('git:cherryPick', async (_event, repoPath: string, commitHash: string) => {
+        return gitService.cherryPick(repoPath, commitHash);
+    });
+
+    // ── Squash / Reword ──
+    ipcMain.handle('git:squashCommits', async (_event, repoPath: string, count: number, message: string) => {
+        return gitService.squashCommits(repoPath, count, message);
+    });
+    ipcMain.handle('git:rewordCommit', async (_event, repoPath: string, newMessage: string) => {
+        return gitService.rewordCommit(repoPath, newMessage);
+    });
+
+    ipcMain.handle('git:listFiles', async (_event, repoPath: string) => {
+        return gitService.listFiles(repoPath);
+    });
+
+    ipcMain.handle('git:getFileContent', async (_event, repoPath: string, path: string, ref?: string) => {
+        return gitService.getFileContent(repoPath, path, ref);
+    });
+
     ipcMain.handle('git:clone', async (_event, url: string, destination: string, token?: string) => {
         return gitService.clone(url, destination, token, (progress) => {
             mainWindow?.webContents.send('git:cloneProgress', progress);
@@ -371,7 +466,17 @@ function registerIpcHandlers(): void {
     // ── File System ──
     ipcMain.handle('fs:writeFile', async (_event, filePath: string, content: string) => {
         const fs = require('fs/promises');
+        const path = require('path');
+
+        // Create parent directories if they don't exist
+        const dir = path.dirname(filePath);
+        await fs.mkdir(dir, { recursive: true });
+
         return fs.writeFile(filePath, content, 'utf8');
+    });
+    ipcMain.handle('fs:readFile', async (_event, filePath: string) => {
+        const fs = require('fs/promises');
+        return fs.readFile(filePath, 'utf8');
     });
     ipcMain.handle('fs:exists', async (_event, filePath: string) => {
         const fs = require('fs');

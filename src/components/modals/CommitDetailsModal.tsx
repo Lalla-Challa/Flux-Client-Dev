@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUIStore } from '../../stores/ui.store';
 import { useRepoStore, FileStatus } from '../../stores/repo.store';
-import { DiffViewer } from '../diff/DiffViewer';
+import { DiffEditor } from '../common/DiffEditor';
 
 const api = () => (window as any).electronAPI;
 
@@ -15,7 +15,7 @@ export function CommitDetailsModal() {
 
     const [files, setFiles] = useState<FileStatus[]>([]);
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
-    const [diff, setDiff] = useState('');
+    const [diff, setDiff] = useState<{ original: string, modified: string } | null>(null);
     const [isLoadingDetails, setIsLoadingDetails] = useState(false);
     const [isLoadingDiff, setIsLoadingDiff] = useState(false);
 
@@ -25,7 +25,7 @@ export function CommitDetailsModal() {
             setIsLoadingDetails(true);
             setFiles([]);
             setSelectedFile(null);
-            setDiff('');
+            setDiff(null);
 
             api().git.getCommitDetails(activeRepoPath, commitHash)
                 .then((fetchedFiles: FileStatus[]) => {
@@ -42,31 +42,30 @@ export function CommitDetailsModal() {
         }
     }, [isOpen, commitHash, activeRepoPath]);
 
-    // Fetch diff for selected file
+    // Fetch content for selected file
     useEffect(() => {
         if (isOpen && activeRepoPath && commitHash && selectedFile) {
             setIsLoadingDiff(true);
 
-            const fetchDiff = async () => {
+            const fetchContent = async () => {
                 try {
-                    // Compare with parent commit
-                    const d = await api().git.getFileDiff(activeRepoPath, selectedFile, `${commitHash}~1`, commitHash);
-                    setDiff(d || '');
-                } catch {
-                    try {
-                        // Fallback for initial commit: diff against empty tree
-                        const d = await api().git.getFileDiff(activeRepoPath, selectedFile, '4b825dc642cb6eb9a060e54bf8d69288fbee4904', commitHash);
-                        setDiff(d || '');
-                    } catch (err) {
-                        console.error(err);
-                        setDiff('');
-                    }
+                    const [original, modified] = await Promise.all([
+                        api().git.getFileContent(activeRepoPath, selectedFile, `${commitHash}~1`)
+                            .catch(() => ''), // If parent doesn't exist (initial commit), empty string
+                        api().git.getFileContent(activeRepoPath, selectedFile, commitHash)
+                            .catch(() => '')
+                    ]);
+
+                    setDiff({ original, modified });
+                } catch (err) {
+                    console.error(err);
+                    setDiff({ original: '', modified: '' });
                 } finally {
                     setIsLoadingDiff(false);
                 }
             };
 
-            fetchDiff();
+            fetchContent();
         }
     }, [isOpen, activeRepoPath, commitHash, selectedFile]);
 
@@ -143,14 +142,14 @@ export function CommitDetailsModal() {
                                             key={file.path}
                                             onClick={() => setSelectedFile(file.path)}
                                             className={`w-full text-left flex items-center gap-2 px-2 py-1.5 rounded text-xs mb-0.5 transition-colors ${selectedFile === file.path
-                                                    ? 'bg-accent/10 text-accent'
-                                                    : 'hover:bg-surface-2 text-text-secondary'
+                                                ? 'bg-accent/10 text-accent'
+                                                : 'hover:bg-surface-2 text-text-secondary'
                                                 }`}
                                         >
                                             <span className={`w-3.5 h-3.5 flex items-center justify-center rounded text-[10px] font-bold shrink-0 ${file.status === 'added' ? 'bg-status-added/20 text-status-added' :
-                                                    file.status === 'deleted' ? 'bg-status-deleted/20 text-status-deleted' :
-                                                        file.status === 'modified' ? 'bg-status-modified/20 text-status-modified' :
-                                                            'bg-text-tertiary/20 text-text-tertiary'
+                                                file.status === 'deleted' ? 'bg-status-deleted/20 text-status-deleted' :
+                                                    file.status === 'modified' ? 'bg-status-modified/20 text-status-modified' :
+                                                        'bg-text-tertiary/20 text-text-tertiary'
                                                 }`}>
                                                 {file.status === 'added' ? 'A' :
                                                     file.status === 'deleted' ? 'D' :
@@ -184,7 +183,12 @@ export function CommitDetailsModal() {
                                     </div>
                                 )}
                                 {diff ? (
-                                    <DiffViewer diff={diff} />
+                                    <DiffEditor
+                                        original={diff.original}
+                                        modified={diff.modified}
+                                        language={selectedFile?.split('.').pop() === 'ts' ? 'typescript' : 'javascript'} // Simple detection
+                                        readOnly={true}
+                                    />
                                 ) : (
                                     <div className="flex flex-col items-center justify-center h-full text-text-tertiary">
                                         <svg className="w-10 h-10 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -7,8 +7,16 @@ export function HistoryTab() {
     const commits = useRepoStore((s) => s.commits);
     const refreshLog = useRepoStore((s) => s.refreshLog);
     const activeRepoPath = useRepoStore((s) => s.activeRepoPath);
+    const cherryPick = useRepoStore((s) => s.cherryPick);
+    const squashCommits = useRepoStore((s) => s.squashCommits);
+    const rewordCommit = useRepoStore((s) => s.rewordCommit);
     const openModal = useUIStore((s) => s.openModal);
     const [copiedHash, setCopiedHash] = useState<string | null>(null);
+    const [squashMode, setSquashMode] = useState(false);
+    const [squashCount, setSquashCount] = useState(2);
+    const [squashMessage, setSquashMessage] = useState('');
+    const [rewordMode, setRewordMode] = useState(false);
+    const [rewordMessage, setRewordMessage] = useState('');
 
     useEffect(() => {
         if (activeRepoPath) {
@@ -20,6 +28,33 @@ export function HistoryTab() {
         navigator.clipboard.writeText(hash);
         setCopiedHash(hash);
         setTimeout(() => setCopiedHash(null), 2000);
+    };
+
+    const handleCherryPick = async (hash: string) => {
+        if (!confirm(`Cherry-pick commit ${hash.substring(0, 7)} onto the current branch?`)) return;
+        try {
+            await cherryPick(hash);
+        } catch { /* handled in store */ }
+    };
+
+    const handleSquash = async () => {
+        if (!squashMessage.trim() || squashCount < 2) return;
+        if (!confirm(`Squash the last ${squashCount} commits into one?`)) return;
+        try {
+            await squashCommits(squashCount, squashMessage.trim());
+            setSquashMode(false);
+            setSquashMessage('');
+            setSquashCount(2);
+        } catch { /* handled in store */ }
+    };
+
+    const handleReword = async () => {
+        if (!rewordMessage.trim()) return;
+        try {
+            await rewordCommit(rewordMessage.trim());
+            setRewordMode(false);
+            setRewordMessage('');
+        } catch { /* handled in store */ }
     };
 
     if (commits.length === 0) {
@@ -49,17 +84,85 @@ export function HistoryTab() {
                         {commits.length} commits
                     </span>
                 </div>
-                <button
-                    onClick={() => refreshLog()}
-                    className="btn-ghost p-1.5"
-                    title="Refresh history"
-                >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                </button>
+                <div className="flex items-center gap-1">
+                    <button
+                        onClick={() => { setSquashMode(!squashMode); setRewordMode(false); }}
+                        className={`btn-ghost text-xs px-2 py-1 ${squashMode ? 'text-brand-400' : ''}`}
+                        title="Squash recent commits"
+                    >
+                        Squash
+                    </button>
+                    <button
+                        onClick={() => {
+                            setRewordMode(!rewordMode);
+                            setSquashMode(false);
+                            if (!rewordMode && commits.length > 0) setRewordMessage(commits[0].message);
+                        }}
+                        className={`btn-ghost text-xs px-2 py-1 ${rewordMode ? 'text-brand-400' : ''}`}
+                        title="Reword HEAD commit"
+                    >
+                        Reword
+                    </button>
+                    <button
+                        onClick={() => refreshLog()}
+                        className="btn-ghost p-1.5"
+                        title="Refresh history"
+                    >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                    </button>
+                </div>
             </div>
+
+            {/* Squash Panel */}
+            {squashMode && (
+                <div className="px-4 py-3 border-b border-border bg-surface-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                        <label className="text-xs text-text-secondary">Squash last</label>
+                        <input
+                            type="number"
+                            min={2}
+                            max={commits.length}
+                            value={squashCount}
+                            onChange={(e) => setSquashCount(Math.max(2, parseInt(e.target.value) || 2))}
+                            className="input-field text-xs w-16"
+                        />
+                        <label className="text-xs text-text-secondary">commits</label>
+                    </div>
+                    <input
+                        type="text"
+                        value={squashMessage}
+                        onChange={(e) => setSquashMessage(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSquash()}
+                        placeholder="Combined commit message..."
+                        className="input-field text-xs w-full"
+                    />
+                    <div className="flex gap-2">
+                        <button onClick={handleSquash} className="btn-primary text-xs" disabled={!squashMessage.trim()}>Squash</button>
+                        <button onClick={() => setSquashMode(false)} className="btn-ghost text-xs">Cancel</button>
+                    </div>
+                </div>
+            )}
+
+            {/* Reword Panel */}
+            {rewordMode && (
+                <div className="px-4 py-3 border-b border-border bg-surface-1 space-y-2">
+                    <label className="text-xs text-text-secondary">New message for HEAD commit:</label>
+                    <input
+                        type="text"
+                        value={rewordMessage}
+                        onChange={(e) => setRewordMessage(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleReword()}
+                        className="input-field text-xs w-full"
+                    />
+                    <div className="flex gap-2">
+                        <button onClick={handleReword} className="btn-primary text-xs" disabled={!rewordMessage.trim()}>Reword</button>
+                        <button onClick={() => setRewordMode(false)} className="btn-ghost text-xs">Cancel</button>
+                    </div>
+                </div>
+            )}
 
             {/* Commit List */}
             <div className="flex-1 overflow-y-auto">
@@ -91,6 +194,7 @@ export function HistoryTab() {
                                 isCopied={copiedHash === commit.hash}
                                 onClick={() => openModal('commit-details', commit.hash)}
                                 onCopy={() => handleCopy(commit.hash)}
+                                onCherryPick={() => handleCherryPick(commit.hash)}
                             />
                         ))}
                     </div>
@@ -113,12 +217,14 @@ function CommitItem({
     isCopied,
     onClick,
     onCopy,
+    onCherryPick,
 }: {
     commit: CommitInfo;
     isLatest: boolean;
     isCopied: boolean;
     onClick: () => void;
     onCopy: () => void;
+    onCherryPick: () => void;
 }) {
     const formatDate = (dateStr: string) => {
         try {
@@ -180,6 +286,21 @@ function CommitItem({
                     <span>{formatDate(commit.date)}</span>
                 </div>
             </div>
+
+            {/* Cherry-pick button */}
+            <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onCherryPick();
+                }}
+                className="opacity-0 group-hover:opacity-100 btn-ghost p-1.5 text-text-tertiary hover:text-purple-400 transition-all"
+                title="Cherry-pick this commit"
+            >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+            </button>
 
             {/* Copy hash button */}
             <button

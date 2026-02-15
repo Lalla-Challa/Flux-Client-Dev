@@ -220,9 +220,23 @@ function RepoCard({ repo, onClone }: { repo: GitHubRepo; onClone: () => void }) 
             </div>
 
             {/* Actions */}
-            <button onClick={onClone} className="btn-primary w-full text-xs py-2">
-                📦 Clone Repository
-            </button>
+            <div className="flex gap-2">
+                <button onClick={onClone} className="btn-primary flex-1 text-xs py-2">
+                    📦 Clone Repository
+                </button>
+                {repo.fork && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            useRepoStore.getState().syncFork(useAccountStore.getState().accounts.find(a => a.username === repo.owner.login)?.token!, repo);
+                        }}
+                        className="btn-secondary px-3 py-2 text-xs"
+                        title="Sync with Upstream"
+                    >
+                        🔄 Sync
+                    </button>
+                )}
+            </div>
         </motion.div>
     );
 }

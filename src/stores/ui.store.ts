@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type TabId = 'changes' | 'history' | 'branches' | 'cloud' | 'settings' | 'pull-requests';
+export type TabId = 'changes' | 'history' | 'branches' | 'cloud' | 'settings' | 'pull-requests' | 'actions' | 'issues' | 'files';
 
 interface UIState {
     activeTab: TabId;

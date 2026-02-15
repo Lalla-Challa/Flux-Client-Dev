@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useRepoStore, BranchInfo } from '../../stores/repo.store';
+import { useRepoStore, BranchInfo, TagInfo } from '../../stores/repo.store';
 import { useUIStore } from '../../stores/ui.store';
 import { useAccountStore } from '../../stores/account.store';
 
@@ -233,7 +233,7 @@ export function BranchesTab() {
 
             {/* Remote Branches */}
             {filteredRemote.length > 0 && (
-                <div>
+                <div className="mb-6">
                     <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">
                         Remote ({filteredRemote.length})
                     </h3>
@@ -244,15 +244,16 @@ export function BranchesTab() {
                                 branch={branch}
                                 onCheckout={() => handleCheckout(branch.name)}
                                 onDelete={() => handleDeleteRemote(branch.name)}
-                                // Can merge remote branches too? Yes.
                                 onMerge={() => handleMerge(branch.name)}
-                                // Rebase onto remote? Yes.
                                 onRebase={() => handleRebase(branch.name)}
                             />
                         ))}
                     </div>
                 </div>
             )}
+
+            {/* Tags */}
+            <TagsSection />
         </div>
     );
 }
@@ -351,6 +352,166 @@ function BranchGraphSection() {
                     </motion.div>
                 )}
             </AnimatePresence>
+        </div>
+    );
+}
+
+// ──── Tags Section ────────────────────────────────────────────────
+
+function TagsSection() {
+    const tags = useRepoStore((s) => s.tags);
+    const isLoadingTags = useRepoStore((s) => s.isLoadingTags);
+    const loadTags = useRepoStore((s) => s.loadTags);
+    const createTag = useRepoStore((s) => s.createTag);
+    const pushTag = useRepoStore((s) => s.pushTag);
+    const deleteTag = useRepoStore((s) => s.deleteTag);
+    const activeRepoPath = useRepoStore((s) => s.activeRepoPath);
+
+    const [showCreate, setShowCreate] = useState(false);
+    const [tagName, setTagName] = useState('');
+    const [tagMessage, setTagMessage] = useState('');
+
+    useEffect(() => {
+        if (activeRepoPath) loadTags();
+    }, [activeRepoPath, loadTags]);
+
+    const handleCreate = async () => {
+        if (!tagName.trim()) return;
+        try {
+            await createTag(tagName.trim(), tagMessage.trim() || undefined);
+            setTagName('');
+            setTagMessage('');
+            setShowCreate(false);
+        } catch { /* handled in store */ }
+    };
+
+    const handleDelete = async (name: string) => {
+        if (!confirm(`Delete tag ${name}?`)) return;
+        await deleteTag(name);
+    };
+
+    return (
+        <div>
+            <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+                    Tags ({tags.length})
+                </h3>
+                <button
+                    onClick={() => setShowCreate(!showCreate)}
+                    className="btn-ghost text-xs p-1"
+                    title="Create tag"
+                >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                </button>
+            </div>
+
+            <AnimatePresence>
+                {showCreate && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="mb-3 overflow-hidden"
+                    >
+                        <div className="p-3 rounded-lg bg-surface-2 border border-border space-y-2">
+                            <input
+                                type="text"
+                                value={tagName}
+                                onChange={(e) => setTagName(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+                                placeholder="v1.0.0"
+                                className="input-field text-xs w-full"
+                                autoFocus
+                            />
+                            <input
+                                type="text"
+                                value={tagMessage}
+                                onChange={(e) => setTagMessage(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+                                placeholder="Tag message (optional)"
+                                className="input-field text-xs w-full"
+                            />
+                            <div className="flex gap-2">
+                                <button onClick={handleCreate} className="btn-primary text-xs">Create</button>
+                                <button onClick={() => setShowCreate(false)} className="btn-ghost text-xs">Cancel</button>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {isLoadingTags ? (
+                <div className="flex items-center justify-center py-4">
+                    <svg className="w-4 h-4 animate-spin text-text-tertiary" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                </div>
+            ) : tags.length === 0 ? (
+                <div className="text-xs text-text-tertiary text-center py-4">No tags yet</div>
+            ) : (
+                <div className="space-y-1">
+                    {tags.map((tag) => (
+                        <TagItem
+                            key={tag.name}
+                            tag={tag}
+                            onPush={() => pushTag(tag.name)}
+                            onDelete={() => handleDelete(tag.name)}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function TagItem({ tag, onPush, onDelete }: { tag: TagInfo; onPush: () => void; onDelete: () => void }) {
+    const formatDate = (dateStr: string) => {
+        try {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        } catch {
+            return dateStr;
+        }
+    };
+
+    return (
+        <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg group hover:bg-surface-2/50">
+            <svg className="w-4 h-4 shrink-0 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+            </svg>
+            <div className="flex-1 min-w-0">
+                <div className="text-sm font-mono text-text-primary">{tag.name}</div>
+                <div className="text-2xs text-text-tertiary flex items-center gap-2">
+                    <span className="font-mono bg-surface-2 px-1 rounded">{tag.hash}</span>
+                    {tag.message && <span className="truncate">{tag.message}</span>}
+                    <span>{formatDate(tag.date)}</span>
+                </div>
+            </div>
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                    onClick={(e) => { e.stopPropagation(); onPush(); }}
+                    className="p-1 text-text-tertiary hover:text-brand-400 transition-all"
+                    title="Push tag to remote"
+                >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                </button>
+                <button
+                    onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                    className="p-1 text-text-tertiary hover:text-red-400 transition-all"
+                    title="Delete tag"
+                >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                </button>
+            </div>
         </div>
     );
 }

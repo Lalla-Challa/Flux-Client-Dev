@@ -1,4 +1,4 @@
-import { GitHubRepo, CreateRepoOptions, UpdateRepoOptions } from './lib/github-types';
+import { GitHubRepo, CreateRepoOptions, UpdateRepoOptions, GitHubWorkflow, GitHubWorkflowRun, GitHubJob } from './lib/github-types';
 import { RepoInfo, FileStatus, CommitInfo, SyncResult } from './stores/repo.store';
 
 export interface ElectronAPI {
@@ -35,6 +35,14 @@ export interface ElectronAPI {
         getBranchProtection: (token: string, owner: string, repo: string, branch: string) => Promise<any>;
         addBranchProtection: (token: string, owner: string, repo: string, branch: string, rules?: any) => Promise<void>;
         removeBranchProtection: (token: string, owner: string, repo: string, branch: string) => Promise<void>;
+
+        // Actions
+        listWorkflows: (token: string, owner: string, repo: string) => Promise<{ total_count: number; workflows: GitHubWorkflow[] }>;
+        listWorkflowRuns: (token: string, owner: string, repo: string, workflowId?: number) => Promise<{ total_count: number; workflow_runs: GitHubWorkflowRun[] }>;
+        getWorkflowRunJobs: (token: string, owner: string, repo: string, runId: number) => Promise<{ total_count: number; jobs: GitHubJob[] }>;
+        triggerWorkflow: (token: string, owner: string, repo: string, workflowId: number, ref: string, inputs?: any) => Promise<void>;
+        cancelWorkflowRun: (token: string, owner: string, repo: string, runId: number) => Promise<void>;
+        rerunWorkflow: (token: string, owner: string, repo: string, runId: number) => Promise<void>;
     };
     git: {
         status: (repoPath: string) => Promise<FileStatus[]>;
@@ -61,12 +69,21 @@ export interface ElectronAPI {
         addRemote: (path: string, name: string, url: string) => Promise<void>;
         merge: (repoPath: string, branch: string) => Promise<void>;
         rebase: (repoPath: string, branch: string) => Promise<void>;
+        listTags: (repoPath: string) => Promise<{ name: string; date: string; message: string; hash: string }[]>;
+        createTag: (repoPath: string, tagName: string, message?: string, commitHash?: string) => Promise<void>;
+        pushTag: (repoPath: string, tagName: string, token: string) => Promise<void>;
+        deleteTag: (repoPath: string, tagName: string) => Promise<void>;
+        deleteRemoteTag: (repoPath: string, tagName: string, token: string) => Promise<void>;
+        cherryPick: (repoPath: string, commitHash: string) => Promise<void>;
+        squashCommits: (repoPath: string, count: number, message: string) => Promise<void>;
+        rewordCommit: (repoPath: string, newMessage: string) => Promise<void>;
     };
     dialog: {
         openDirectory: () => Promise<string | null>;
     };
     fs: {
         writeFile: (path: string, content: string) => Promise<void>;
+        readFile: (path: string) => Promise<string>;
         checkFileExists: (path: string) => Promise<boolean>;
     };
 }

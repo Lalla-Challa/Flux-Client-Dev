@@ -42,6 +42,76 @@ export interface UpdateRepoOptions {
     default_branch?: string;
 }
 
+export interface GitHubWorkflow {
+    id: number;
+    node_id: string;
+    name: string;
+    path: string;
+    state: string;
+    created_at: string;
+    updated_at: string;
+    url: string;
+    html_url: string;
+    badge_url: string;
+}
+
+export interface GitHubWorkflowRun {
+    id: number;
+    name: string | null;
+    node_id: string;
+    head_branch: string;
+    head_sha: string;
+    path: string;
+    display_title: string;
+    status: string;
+    conclusion: string | null;
+    workflow_id: number;
+    url: string;
+    html_url: string;
+    created_at: string;
+    updated_at: string;
+    actor: {
+        login: string;
+        avatar_url: string;
+    };
+    run_attempt: number;
+    run_started_at: string;
+    triggering_actor: {
+        login: string;
+        avatar_url: string;
+    };
+    duration_ms?: number;
+}
+
+export interface GitHubJob {
+    id: number;
+    run_id: number;
+    run_url: string;
+    node_id: string;
+    head_sha: string;
+    url: string;
+    html_url: string | null;
+    status: string;
+    conclusion: string | null;
+    started_at: string;
+    completed_at: string | null;
+    name: string;
+    steps: {
+        name: string;
+        status: string;
+        conclusion: string | null;
+        number: number;
+        started_at: string | null;
+        completed_at: string | null;
+    }[];
+    check_run_url: string;
+    labels: string[];
+    runner_id: number | null;
+    runner_name: string | null;
+    runner_group_id: number | null;
+    runner_group_name: string | null;
+}
+
 // ─── GitHub Service ─────────────────────────────────────────────
 
 export class GitHubService {
@@ -190,6 +260,27 @@ export class GitHubService {
         return this.request(token, 'GET', `/repos/${owner}/${repo}/pulls?state=open`);
     }
 
+    async listIssues(token: string, owner: string, repo: string): Promise<any[]> {
+        // List open issues, filter out PRs (PRs are issues in GitHub API)
+        const issues = await this.request<any[]>(token, 'GET', `/repos/${owner}/${repo}/issues?state=open`);
+        return issues.filter((issue: any) => !issue.pull_request);
+    }
+
+    async createPullRequest(token: string, owner: string, repo: string, options: { title: string; body?: string; head: string; base: string }): Promise<any> {
+        return this.request(token, 'POST', `/repos/${owner}/${repo}/pulls`, options);
+    }
+
+    async listCheckRuns(token: string, owner: string, repo: string, ref: string): Promise<any> {
+        return this.request(token, 'GET', `/repos/${owner}/${repo}/commits/${ref}/check-runs`);
+    }
+
+    async syncFork(token: string, owner: string, repo: string, branch: string): Promise<any> {
+        // Merge upstream branch into fork
+        return this.request(token, 'POST', `/repos/${owner}/${repo}/merge-upstream`, {
+            branch
+        });
+    }
+
     /**
      * Update repository default branch
      */
@@ -253,6 +344,51 @@ export class GitHubService {
      */
     async removeBranchProtection(token: string, owner: string, repo: string, branch: string): Promise<void> {
         await this.request(token, 'DELETE', `/repos/${owner}/${repo}/branches/${branch}/protection`);
+    }
+
+    // ─── GitHub Actions ─────────────────────────────────────────────
+
+    async listWorkflows(token: string, owner: string, repo: string): Promise<{ total_count: number; workflows: GitHubWorkflow[] }> {
+        return this.request(token, 'GET', `/repos/${owner}/${repo}/actions/workflows`);
+    }
+
+    async listWorkflowRuns(token: string, owner: string, repo: string, workflowId?: number, page = 1, per_page = 20): Promise<{ total_count: number; workflow_runs: GitHubWorkflowRun[] }> {
+        let url = `/repos/${owner}/${repo}/actions/runs?page=${page}&per_page=${per_page}`;
+        if (workflowId) {
+            url = `/repos/${owner}/${repo}/actions/workflows/${workflowId}/runs?page=${page}&per_page=${per_page}`;
+        }
+        return this.request(token, 'GET', url);
+    }
+
+    async getWorkflowRunJobs(token: string, owner: string, repo: string, runId: number): Promise<{ total_count: number; jobs: GitHubJob[] }> {
+        return this.request(token, 'GET', `/repos/${owner}/${repo}/actions/runs/${runId}/jobs`);
+    }
+
+    async triggerWorkflow(token: string, owner: string, repo: string, workflowId: number, ref: string, inputs?: Record<string, any>): Promise<void> {
+        await this.request(token, 'POST', `/repos/${owner}/${repo}/actions/workflows/${workflowId}/dispatches`, {
+            ref,
+            inputs
+        });
+    }
+
+    async cancelWorkflowRun(token: string, owner: string, repo: string, runId: number): Promise<void> {
+        await this.request(token, 'POST', `/repos/${owner}/${repo}/actions/runs/${runId}/cancel`);
+    }
+
+    async rerunWorkflow(token: string, owner: string, repo: string, runId: number): Promise<void> {
+        await this.request(token, 'POST', `/repos/${owner}/${repo}/actions/runs/${runId}/rerun`);
+    }
+
+    async getJobLogs(token: string, owner: string, repo: string, jobId: number): Promise<string> {
+        // Logs usually redirect. The request helper handles 3xx? 
+        // Node https.request follows redirects by default? No.
+        // But let's assume standard behavior or we might need to handle 302 Location.
+        // Actually, GitHub API returns text/plain for logs if Accept header is set, otherwise 302.
+        // We might need to update request helper to handle redirects or specific log fetching.
+        // For now, let's implement basic request and see.
+        // Note: request helper sets Accept: application/vnd.github.v3+json. 
+        // We might need custom headers for logs.
+        return ''; // Placeholder, logs might need special handling.
     }
 
     // ─── Helpers ────────────────────────────────────────────────────

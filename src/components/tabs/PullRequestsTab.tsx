@@ -1,9 +1,14 @@
 import React, { useEffect } from 'react';
 import { useRepoStore } from '../../stores/repo.store';
 import { useAccountStore } from '../../stores/account.store';
+import { findCloudRepo, findAccountForRepo } from '../../lib/repo-utils';
 import { motion } from 'framer-motion';
 
+import { CreatePRModal } from '../modals/CreatePRModal';
+import { PRStatus } from '../common/PRStatus';
+
 export function PullRequestsTab() {
+    const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
     const activeRepoPath = useRepoStore((s) => s.activeRepoPath);
     const repos = useRepoStore((s) => s.repos);
     const cloudRepos = useRepoStore((s) => s.cloudRepos);
@@ -20,22 +25,16 @@ export function PullRequestsTab() {
     // Auto-load cloud repos if not loaded yet
     useEffect(() => {
         if (currentAccount?.token && cloudRepos.length === 0) {
-            loadCloudRepos(currentAccount.token).catch(() => {});
+            loadCloudRepos(currentAccount.token).catch(() => { });
         }
     }, [currentAccount?.token, cloudRepos.length, loadCloudRepos]);
 
     const activeRepo = repos.find((r) => r.path === activeRepoPath);
     const remoteUrl = activeRepo?.remoteUrl;
 
-    const cloudRepo = cloudRepos.find((r) =>
-        r.clone_url === remoteUrl ||
-        r.ssh_url === remoteUrl ||
-        (remoteUrl && r.html_url === remoteUrl.replace('.git', '')) ||
-        (remoteUrl && r.clone_url === remoteUrl.replace(/\/$/, '') + '.git') ||
-        (remoteUrl && remoteUrl === r.clone_url.replace(/\.git$/, ''))
-    );
+    const cloudRepo = findCloudRepo(activeRepo, cloudRepos);
 
-    const activeAccount = accounts.find(a => cloudRepo?.owner.login === a.username);
+    const activeAccount = findAccountForRepo(cloudRepo, accounts, activeAccountId);
     const token = activeAccount?.token;
 
     useEffect(() => {
@@ -94,16 +93,27 @@ export function PullRequestsTab() {
             {/* Header */}
             <div className="px-4 py-3 border-b border-border flex items-center justify-between">
                 <h2 className="font-semibold text-sm">Pull Requests</h2>
-                <button
-                    onClick={() => loadPullRequests(token, cloudRepo)}
-                    disabled={isLoadingPRs}
-                    className="btn-ghost p-1.5"
-                    title="Refresh"
-                >
-                    <svg className={`w-4 h-4 ${isLoadingPRs ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                </button>
+                <div className="flex items-center gap-1">
+                    <button
+                        onClick={() => setIsCreateModalOpen(true)}
+                        className="btn-primary text-xs px-2 py-1 flex items-center gap-1"
+                    >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        New
+                    </button>
+                    <button
+                        onClick={() => loadPullRequests(token, cloudRepo)}
+                        disabled={isLoadingPRs}
+                        className="btn-ghost p-1.5"
+                        title="Refresh"
+                    >
+                        <svg className={`w-4 h-4 ${isLoadingPRs ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                    </button>
+                </div>
             </div>
 
             {/* List */}
@@ -124,6 +134,11 @@ export function PullRequestsTab() {
                     </div>
                 )}
             </div>
+
+            <CreatePRModal
+                isOpen={isCreateModalOpen}
+                onClose={() => setIsCreateModalOpen(false)}
+            />
         </div>
     );
 }
@@ -157,7 +172,10 @@ function PRCard({ pr, onCheckout }: { pr: any; onCheckout: () => void }) {
 
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-1">
-                        <h3 className="font-medium text-sm truncate" title={pr.title}>{pr.title}</h3>
+                        <div className="flex items-center gap-2 min-w-0">
+                            <h3 className="font-medium text-sm truncate" title={pr.title}>{pr.title}</h3>
+                            <PRStatus pr={pr} />
+                        </div>
                         <span className="text-xs text-text-tertiary shrink-0">#{pr.number}</span>
                     </div>
                     <p className="text-xs text-text-secondary truncate mb-2">
