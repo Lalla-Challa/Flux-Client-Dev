@@ -70,11 +70,35 @@ export function ChangesTab() {
                         className="input-field resize-none text-xs font-mono"
                         rows={3}
                     />
-                    <div className="flex items-center justify-between mt-2">
+                    <div className="flex items-center justify-between mt-2 gap-2">
                         <span className="text-2xs text-text-tertiary">
                             {stagedFiles.length} staged
                         </span>
-                        <span className="kbd text-2xs">Ctrl+Enter</span>
+                        <div className="flex items-center gap-2">
+                            <span className="kbd text-2xs hidden sm:inline">Ctrl+Enter</span>
+                            <button
+                                onClick={() => {
+                                    const { commitAndPush } = useRepoStore.getState();
+                                    if (commitMessage.trim() && stagedFiles.length > 0) {
+                                        commitAndPush(commitMessage);
+                                    }
+                                }}
+                                disabled={!commitMessage.trim() || stagedFiles.length === 0}
+                                className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 disabled:bg-surface-4 disabled:text-text-tertiary text-white rounded transition-colors disabled:cursor-not-allowed flex items-center gap-1.5"
+                                title={
+                                    !commitMessage.trim()
+                                        ? "Enter a commit message"
+                                        : stagedFiles.length === 0
+                                        ? "Stage files to commit"
+                                        : "Commit and push changes"
+                                }
+                            >
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                Commit
+                            </button>
+                        </div>
                     </div>
                 </div>
 
