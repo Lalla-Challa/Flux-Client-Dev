@@ -81,6 +81,7 @@ interface RepoState {
     clearBlame: () => void;
 
     // Actions
+    loadSavedRepos: () => Promise<void>;
     setActiveRepo: (path: string) => void;
     setRepos: (repos: RepoInfo[]) => void;
     scanDirectory: (rootPath: string) => Promise<void>;
@@ -169,6 +170,23 @@ interface RepoState {
 
 const api = () => (window as any).electronAPI;
 
+const STORAGE_KEY_REPOS = 'saved-repos';
+const STORAGE_KEY_ACTIVE = 'active-repo';
+
+// Persist repos + activeRepoPath to disk (fire-and-forget)
+function persistRepos(repos: RepoInfo[], activeRepoPath: string | null) {
+    try {
+        // Only persist the fields we need (strip runtime state)
+        const toSave = repos.map(({ name, path, branch, remoteUrl, accountId, lastOpened }) => ({
+            name, path, branch, remoteUrl, accountId, lastOpened,
+        }));
+        api().storage.set(STORAGE_KEY_REPOS, toSave);
+        api().storage.set(STORAGE_KEY_ACTIVE, activeRepoPath);
+    } catch (e) {
+        // Non-critical, ignore
+    }
+}
+
 export const useRepoStore = create<RepoState>((set, get) => ({
     repos: [],
     activeRepoPath: null,
@@ -192,6 +210,24 @@ export const useRepoStore = create<RepoState>((set, get) => ({
     blameData: null,
     isLoadingBlame: false,
 
+    loadSavedRepos: async () => {
+        try {
+            const savedRepos = await api().storage.get(STORAGE_KEY_REPOS);
+            const savedActive = await api().storage.get(STORAGE_KEY_ACTIVE);
+
+            if (savedRepos && Array.isArray(savedRepos) && savedRepos.length > 0) {
+                set({ repos: savedRepos });
+
+                // Restore active repo if it's still in the list
+                if (savedActive && savedRepos.some((r: RepoInfo) => r.path === savedActive)) {
+                    get().setActiveRepo(savedActive);
+                }
+            }
+        } catch (e) {
+            console.error('Failed to load saved repos:', e);
+        }
+    },
+
     loadBlame: async (file) => {
         const { activeRepoPath } = get();
         if (!activeRepoPath) return;
@@ -210,16 +246,20 @@ export const useRepoStore = create<RepoState>((set, get) => ({
 
     setActiveRepo: (path) => {
         // Update lastOpened timestamp
-        set((state) => ({
-            activeRepoPath: path,
-            fileStatuses: [],
-            commits: [],
-            branches: [],
-            currentDiff: '',
-            repos: state.repos.map((r) =>
+        set((state) => {
+            const updatedRepos = state.repos.map((r) =>
                 r.path === path ? { ...r, lastOpened: Date.now() } : r
-            ),
-        }));
+            );
+            persistRepos(updatedRepos, path);
+            return {
+                activeRepoPath: path,
+                fileStatuses: [],
+                commits: [],
+                branches: [],
+                currentDiff: '',
+                repos: updatedRepos,
+            };
+        });
         // Auto-refresh when switching repos
         setTimeout(() => {
             get().refreshStatus();
@@ -235,7 +275,10 @@ export const useRepoStore = create<RepoState>((set, get) => ({
         }, 0);
     },
 
-    setRepos: (repos) => set({ repos }),
+    setRepos: (repos) => {
+        set({ repos });
+        persistRepos(repos, get().activeRepoPath);
+    },
 
     scanDirectory: async (rootPath) => {
         set({ isScanning: true });
@@ -244,8 +287,10 @@ export const useRepoStore = create<RepoState>((set, get) => ({
             set((state) => {
                 const existingPaths = new Set(state.repos.map((r) => r.path));
                 const uniqueNewRepos = newRepos.filter((r) => !existingPaths.has(r.path));
+                const allRepos = [...state.repos, ...uniqueNewRepos];
+                persistRepos(allRepos, state.activeRepoPath);
                 return {
-                    repos: [...state.repos, ...uniqueNewRepos],
+                    repos: allRepos,
                     isScanning: false,
                 };
             });
@@ -308,7 +353,9 @@ export const useRepoStore = create<RepoState>((set, get) => ({
             // Add new repos, avoiding duplicates
             const existingPaths = new Set(repos.map(r => r.path));
             const uniqueNewRepos = newRepos.filter((r: RepoInfo) => !existingPaths.has(r.path));
-            set({ repos: [...repos, ...uniqueNewRepos] });
+            const allRepos = [...repos, ...uniqueNewRepos];
+            set({ repos: allRepos });
+            persistRepos(allRepos, get().activeRepoPath);
 
         } catch (error: any) {
             console.error('Clone failed:', error);
@@ -352,7 +399,9 @@ export const useRepoStore = create<RepoState>((set, get) => ({
                 const { repos } = get();
                 const existingPaths = new Set(repos.map((r) => r.path));
                 const uniqueNewRepos = newRepos.filter((r: RepoInfo) => !existingPaths.has(r.path));
-                set({ repos: [...repos, ...uniqueNewRepos] });
+                const allRepos = [...repos, ...uniqueNewRepos];
+                set({ repos: allRepos });
+                persistRepos(allRepos, get().activeRepoPath);
 
                 // If "both", also create on GitHub and link
                 if (type === 'both' && token) {
@@ -662,7 +711,7 @@ export const useRepoStore = create<RepoState>((set, get) => ({
                     ui.showNotification('success', 'Committed & pushed!');
                 } catch (pushError: any) {
                     // Commit succeeded but push failed
-                    ui.showNotification('warning', 'Committed locally, but push failed: ' + (pushError.message || 'Unknown error'));
+                    ui.showNotification('info', 'Committed locally, but push failed: ' + (pushError.message || 'Unknown error'));
                     // Don't clear commit message so user can see what was committed
                     // They can use the "Push" button to retry
                 }

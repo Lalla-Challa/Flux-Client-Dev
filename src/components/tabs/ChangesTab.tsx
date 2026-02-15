@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useRepoStore, FileStatus } from '../../stores/repo.store';
 import { useUIStore } from '../../stores/ui.store';
@@ -19,6 +19,18 @@ export function ChangesTab() {
 
     const stagedFiles = fileStatuses.filter((f) => f.staged);
     const unstagedFiles = fileStatuses.filter((f) => !f.staged);
+
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    // Ensure textarea is always functional - fix for becoming unresponsive after undo
+    useEffect(() => {
+        if (textareaRef.current) {
+            // Remove any disabled state that might have been set
+            textareaRef.current.disabled = false;
+            // Ensure it can receive focus
+            textareaRef.current.style.pointerEvents = 'auto';
+        }
+    }, [fileStatuses, stagedFiles.length]); // Re-run when file status changes (e.g., after undo)
 
     const selectedFileStatus = useMemo(() =>
         fileStatuses.find(f => f.path === selectedFile),
@@ -63,12 +75,15 @@ export function ChangesTab() {
                 {/* Commit Message */}
                 <div className="p-3 border-b border-border">
                     <textarea
+                        ref={textareaRef}
+                        key={`commit-msg-${activeRepoPath}`}
                         value={commitMessage}
                         onChange={(e) => setCommitMessage(e.target.value)}
                         onKeyDown={handleKeyDown}
                         placeholder="Commit message..."
                         className="input-field resize-none text-xs font-mono"
                         rows={3}
+                        autoFocus={false}
                     />
                     <div className="flex items-center justify-between mt-2 gap-2">
                         <span className="text-2xs text-text-tertiary">
@@ -97,6 +112,24 @@ export function ChangesTab() {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                 </svg>
                                 Commit
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const { pushOnly } = useRepoStore.getState();
+                                    pushOnly();
+                                }}
+                                disabled={stagedFiles.length > 0}
+                                className="px-3 py-1.5 text-xs font-medium bg-surface-3 hover:bg-surface-4 disabled:bg-surface-2 disabled:text-text-tertiary text-text-secondary hover:text-text-primary rounded transition-colors disabled:cursor-not-allowed flex items-center gap-1.5 border border-border"
+                                title={
+                                    stagedFiles.length > 0
+                                        ? "Stage area not empty - commit first"
+                                        : "Push local commits to remote"
+                                }
+                            >
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16l4 4m0 0l4-4m-4 4V4" />
+                                </svg>
+                                Push
                             </button>
                         </div>
                     </div>

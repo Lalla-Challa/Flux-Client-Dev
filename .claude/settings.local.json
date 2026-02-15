@@ -6,7 +6,9 @@
       "Bash(npx vite build:*)",
       "Bash(wc:*)",
       "Bash(npm install:*)",
-      "Bash(npm run build:electron:*)"
+      "Bash(npm run build:electron:*)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)"
     ]
   }
 }
