@@ -15,6 +15,7 @@ interface UIState {
     showConflictPanel: boolean;
     conflictFiles: string[];
     showNewRepoModal: boolean;
+    branchCreateRequested: boolean;
     notification: { type: 'success' | 'error' | 'info'; message: string } | null;
 
     // Generic modal state to avoid clutter
@@ -38,6 +39,7 @@ interface UIState {
     showConflicts: (files: string[]) => void;
     hideConflicts: () => void;
     setShowNewRepoModal: (show: boolean) => void;
+    setBranchCreateRequested: (requested: boolean) => void;
     showNotification: (type: 'success' | 'error' | 'info', message: string) => void;
     clearNotification: () => void;
 }
@@ -47,7 +49,7 @@ export const useUIStore = create<UIState>((set) => ({
     theme: 'dark',
     repoSidebarCollapsed: false,
     terminalExpanded: false,
-    terminalHeight: 240,
+    terminalHeight: 320,
     selectedFile: null,
     commitMessage: '',
     isCommitting: false,
@@ -55,6 +57,7 @@ export const useUIStore = create<UIState>((set) => ({
     showConflictPanel: false,
     conflictFiles: [],
     showNewRepoModal: false,
+    branchCreateRequested: false,
     notification: null,
     modalState: { type: null, data: null },
 
@@ -87,6 +90,7 @@ export const useUIStore = create<UIState>((set) => ({
     hideConflicts: () => set({ showConflictPanel: false, conflictFiles: [] }),
 
     setShowNewRepoModal: (show) => set({ showNewRepoModal: show }),
+    setBranchCreateRequested: (requested) => set({ branchCreateRequested: requested }),
 
     openModal: (type, data) => set({ modalState: { type, data } }),
     closeModal: () => set({ modalState: { type: null, data: null } }),

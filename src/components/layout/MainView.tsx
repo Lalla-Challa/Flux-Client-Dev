@@ -16,7 +16,6 @@ import { NewRepoModal } from '../modals/NewRepoModal';
 import { CommitDetailsModal } from '../modals/CommitDetailsModal';
 import { CloneModal } from '../modals/CloneModal';
 import { ThemeToggle } from '../common/ThemeToggle';
-import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 
 const APP_VERSION = '1.0.0';
 
@@ -120,8 +119,6 @@ const TABS: { id: TabId; label: string; tooltip: string; icon: JSX.Element }[] =
 ];
 
 export function MainView() {
-    useKeyboardShortcuts();
-
     const activeTab = useUIStore((s) => s.activeTab);
     const setActiveTab = useUIStore((s) => s.setActiveTab);
     const activeRepoPath = useRepoStore((s) => s.activeRepoPath);
@@ -333,14 +330,14 @@ function EmptyState({ onNewRepo }: { onNewRepo: () => void }) {
                 <div className="flex items-center gap-4 mt-6 text-xs text-text-tertiary">
                     <div className="flex items-center gap-1.5">
                         <span className="kbd">Ctrl+P</span>
-                        <span>Search repos</span>
+                        <span>Sync</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                         <span className="kbd">Ctrl+B</span>
                         <span>New branch</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                        <span className="kbd">Ctrl+`</span>
+                        <span className="kbd">Ctrl+J</span>
                         <span>Terminal</span>
                     </div>
                 </div>

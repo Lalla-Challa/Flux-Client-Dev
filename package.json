@@ -1,5 +1,6 @@
 {
   "name": "flux-client",
+  "version": "1.1.0",
   "productName": "Flux Client",
   "description": "A modern, minimalist Desktop Git GUI with multi-account support",
   "main": "dist-electron/main.js",
@@ -19,9 +20,11 @@
     "@types/prismjs": "^1.26.6",
     "dagre": "^0.8.5",
     "date-fns": "^4.1.0",
+    "electron-updater": "^6.7.3",
     "framer-motion": "^11.0.8",
     "js-yaml": "^4.1.1",
     "lucide-react": "^0.564.0",
+    "node-pty": "^1.1.0",
     "prismjs": "^1.30.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

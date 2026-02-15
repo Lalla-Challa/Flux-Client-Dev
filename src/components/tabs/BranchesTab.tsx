@@ -15,6 +15,8 @@ export function BranchesTab() {
     const activeAccountId = useAccountStore((s) => s.activeAccountId);
     const accounts = useAccountStore((s) => s.accounts);
 
+    const branchCreateRequested = useUIStore((s) => s.branchCreateRequested);
+
     const [showCreate, setShowCreate] = useState(false);
     const [newBranchName, setNewBranchName] = useState('');
     const [filter, setFilter] = useState('');
@@ -24,6 +26,18 @@ export function BranchesTab() {
             refreshBranches();
         }
     }, [activeRepoPath, refreshBranches]);
+
+    // Open create form when Ctrl+B is pressed (via UI store flag)
+    useEffect(() => {
+        if (branchCreateRequested) {
+            setShowCreate(true);
+            useUIStore.getState().setBranchCreateRequested(false);
+            setTimeout(() => {
+                const input = document.querySelector<HTMLInputElement>('[data-branch-input]');
+                input?.focus();
+            }, 150);
+        }
+    }, [branchCreateRequested]);
 
     const currentBranch = branches.find((b) => b.current);
     const localBranches = branches.filter((b) => !b.remote);
@@ -193,6 +207,7 @@ export function BranchesTab() {
                     >
                         <div className="flex gap-2 p-3 rounded-lg bg-surface-2 border border-border">
                             <input
+                                data-branch-input
                                 type="text"
                                 value={newBranchName}
                                 onChange={(e) => setNewBranchName(e.target.value)}

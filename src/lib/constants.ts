@@ -55,9 +55,13 @@ export const COLORS = {
 export const KEYBOARD_SHORTCUTS = {
     COMMIT: 'Ctrl+Enter',
     SYNC: 'Ctrl+Shift+S',
-    TOGGLE_TERMINAL: 'Ctrl+`',
+    TOGGLE_TERMINAL: 'Ctrl+J',
     STAGE_ALL: 'Ctrl+Shift+A',
     NEW_BRANCH: 'Ctrl+B',
-    SEARCH_REPOS: 'Ctrl+P',
+    QUICK_SYNC: 'Ctrl+P',
+    PUBLISH_BRANCH: 'Ctrl+Shift+P',
+    STASH: 'Ctrl+Shift+Z',
+    REVERT: 'Ctrl+Shift+R',
+    NEW_REPO: 'Ctrl+Shift+N',
     REFRESH: 'F5',
 } as const;

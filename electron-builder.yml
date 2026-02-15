@@ -16,4 +16,9 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
+  allowElevation: true
   deleteAppDataOnUninstall: false
+publish:
+  provider: github
+  owner: Lalla-Challa
+  repo: Flux-Client-Dev

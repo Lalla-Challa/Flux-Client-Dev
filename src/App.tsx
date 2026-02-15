@@ -6,11 +6,14 @@ import { MainView } from './components/layout/MainView';
 import { BottomTerminal } from './components/layout/BottomTerminal';
 import { ConflictPanel } from './components/conflicts/ConflictPanel';
 import { useAccountStore } from './stores/account.store';
+import { useRepoStore } from './stores/repo.store';
 import { useUIStore } from './stores/ui.store';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { UpdateToast } from './components/common/UpdateToast';
 
 export default function App() {
     const loadAccounts = useAccountStore((s) => s.loadAccounts);
+    const loadSavedRepos = useRepoStore((s) => s.loadSavedRepos);
     const notification = useUIStore((s) => s.notification);
     const showConflictPanel = useUIStore((s) => s.showConflictPanel);
     const repoSidebarCollapsed = useUIStore((s) => s.repoSidebarCollapsed);
@@ -19,18 +22,176 @@ export default function App() {
 
     useEffect(() => {
         loadAccounts();
-    }, [loadAccounts]);
+        loadSavedRepos();
+    }, [loadAccounts, loadSavedRepos]);
 
-    // Keyboard shortcuts
+    // ── Centralized keyboard shortcuts ──
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
-            if (e.ctrlKey && e.key === '`') {
+            const target = e.target as HTMLElement;
+            const isInTerminal = !!target.closest('.xterm');
+            const isCtrl = e.ctrlKey || e.metaKey;
+            const isShift = e.shiftKey;
+            const key = e.key.toLowerCase();
+
+            // ── Always active (even inside terminal / inputs) ──
+
+            // Ctrl+J → Toggle terminal
+            if (isCtrl && !isShift && !e.altKey && key === 'j') {
                 e.preventDefault();
+                e.stopPropagation();
                 useUIStore.getState().toggleTerminal();
+                return;
+            }
+
+            // Let the terminal handle everything else
+            if (isInTerminal) return;
+
+            const isTextInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
+
+            // In text inputs only allow Ctrl+Enter through
+            if (isTextInput && !(isCtrl && e.key === 'Enter')) return;
+
+            if (!isCtrl) {
+                // F5 → Refresh status
+                if (e.key === 'F5') {
+                    e.preventDefault();
+                    const repo = useRepoStore.getState();
+                    if (repo.activeRepoPath) {
+                        repo.refreshStatus();
+                        repo.refreshBranches();
+                        repo.refreshLog();
+                    }
+                    return;
+                }
+                return;
+            }
+
+            const ui = useUIStore.getState();
+            const repo = useRepoStore.getState();
+            const acc = useAccountStore.getState();
+            const activeAccount = acc.accounts.find(a => a.id === acc.activeAccountId);
+
+            // ── Tab navigation (Ctrl+1‑8, Ctrl+,) ──
+
+            const tabMap: Record<string, Parameters<typeof ui.setActiveTab>[0]> = {
+                '1': 'changes', '2': 'history', '3': 'branches', '4': 'cloud',
+                '5': 'pull-requests', '6': 'actions', '7': 'issues', '8': 'files',
+            };
+
+            if (!isShift && tabMap[key]) {
+                e.preventDefault();
+                ui.setActiveTab(tabMap[key]);
+                return;
+            }
+            if (!isShift && key === ',') {
+                e.preventDefault();
+                ui.setActiveTab('settings');
+                return;
+            }
+
+            // ── Actions that don't need an active repo ──
+
+            // Ctrl+Shift+N → New repo modal
+            if (isShift && key === 'n') {
+                e.preventDefault();
+                ui.setShowNewRepoModal(true);
+                return;
+            }
+
+            // Everything below requires an active repo
+            if (!repo.activeRepoPath) return;
+
+            // Ctrl+B → New branch (switch to branches tab + open create form)
+            if (!isShift && key === 'b') {
+                e.preventDefault();
+                ui.setActiveTab('branches');
+                ui.setBranchCreateRequested(true);
+                return;
+            }
+
+            // Ctrl+Shift+S → Sync repo (pull + push)
+            if (isShift && key === 's') {
+                e.preventDefault();
+                if (activeAccount) {
+                    (async () => {
+                        ui.setIsSyncing(true);
+                        try {
+                            const token = await (window as any).electronAPI.auth.getToken(activeAccount.username);
+                            if (!token) { ui.showNotification('error', 'No auth token. Please re-login.'); return; }
+                            const result = await repo.syncRepo(token);
+                            if (result.success) {
+                                ui.showNotification('success', 'Synced successfully!');
+                            } else if (result.conflicts?.length) {
+                                ui.showConflicts(result.conflicts);
+                                ui.showNotification('error', `${result.conflicts.length} conflict(s) detected`);
+                            } else {
+                                ui.showNotification('error', result.error || 'Sync failed');
+                            }
+                        } catch (err: any) {
+                            ui.showNotification('error', err.message || 'Sync failed');
+                        } finally {
+                            ui.setIsSyncing(false);
+                        }
+                    })();
+                }
+                return;
+            }
+
+            // Ctrl+Shift+P → Publish branch
+            if (isShift && key === 'p') {
+                e.preventDefault();
+                if (activeAccount?.token) {
+                    repo.publishBranch(activeAccount.token);
+                }
+                return;
+            }
+
+            // Ctrl+Shift+Z → Stash changes
+            if (isShift && key === 'z') {
+                e.preventDefault();
+                repo.stashChanges();
+                return;
+            }
+
+            // Ctrl+Shift+R → Revert last commit
+            if (isShift && key === 'r') {
+                e.preventDefault();
+                repo.revertLastCommit();
+                return;
+            }
+
+            // Ctrl+P → Sync (pull then push) — same as Ctrl+Shift+S but quicker
+            if (!isShift && key === 'p') {
+                e.preventDefault();
+                if (activeAccount) {
+                    (async () => {
+                        ui.setIsSyncing(true);
+                        try {
+                            const token = await (window as any).electronAPI.auth.getToken(activeAccount.username);
+                            if (!token) { ui.showNotification('error', 'No auth token. Please re-login.'); return; }
+                            const result = await repo.syncRepo(token);
+                            if (result.success) {
+                                ui.showNotification('success', 'Synced successfully!');
+                            } else if (result.conflicts?.length) {
+                                ui.showConflicts(result.conflicts);
+                                ui.showNotification('error', `${result.conflicts.length} conflict(s) detected`);
+                            } else {
+                                ui.showNotification('error', result.error || 'Sync failed');
+                            }
+                        } catch (err: any) {
+                            ui.showNotification('error', err.message || 'Sync failed');
+                        } finally {
+                            ui.setIsSyncing(false);
+                        }
+                    })();
+                }
+                return;
             }
         };
-        window.addEventListener('keydown', handler);
-        return () => window.removeEventListener('keydown', handler);
+
+        window.addEventListener('keydown', handler, true);
+        return () => window.removeEventListener('keydown', handler, true);
     }, []);
 
     return (
@@ -63,20 +224,18 @@ export default function App() {
                             <MainView />
                         </div>
 
-                        {/* Bottom Terminal */}
-                        <AnimatePresence>
-                            {terminalExpanded && (
-                                <motion.div
-                                    initial={{ height: 0 }}
-                                    animate={{ height: terminalHeight }}
-                                    exit={{ height: 0 }}
-                                    transition={{ duration: 0.2, ease: 'easeInOut' }}
-                                    className="border-t border-border overflow-hidden shrink-0"
-                                >
-                                    <BottomTerminal />
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
+                        {/* Bottom Terminal - always mounted, animated via height */}
+                        <motion.div
+                            animate={{ height: terminalExpanded ? terminalHeight : 0 }}
+                            transition={{ duration: 0.2, ease: 'easeInOut' }}
+                            className={`border-t border-border overflow-hidden shrink-0 ${
+                                !terminalExpanded ? 'border-t-0' : ''
+                            }`}
+                        >
+                            <div style={{ height: terminalHeight }} className="h-full">
+                                <BottomTerminal />
+                            </div>
+                        </motion.div>
 
                         {/* Terminal Toggle Bar */}
                         <div
@@ -96,7 +255,7 @@ export default function App() {
                                 <span className="text-xs text-text-tertiary font-mono">Terminal</span>
                             </div>
                             <div className="flex-1" />
-                            <span className="kbd">Ctrl+`</span>
+                            <span className="text-2xs text-text-tertiary">Ctrl+J</span>
                         </div>
                     </div>
                 </div>
@@ -119,6 +278,9 @@ export default function App() {
                         </motion.div>
                     )}
                 </AnimatePresence>
+
+                {/* ── Update Toast ── */}
+                <UpdateToast />
 
                 {/* ── Conflict Panel Overlay ── */}
                 <AnimatePresence>

@@ -116,6 +116,34 @@ export interface ElectronAPI {
         readFile: (path: string) => Promise<string>;
         checkFileExists: (path: string) => Promise<boolean>;
     };
+
+    // Update
+    update: {
+        checkForUpdates: () => Promise<any>;
+        downloadUpdate: () => Promise<void>;
+        quitAndInstall: () => void;
+        onStatusChange: (callback: (status: any) => void) => void;
+        removeStatusListener: () => void;
+    };
+
+    // Storage (persisted key-value in userData)
+    storage: {
+        get: (key: string) => Promise<any>;
+        set: (key: string, value: any) => Promise<void>;
+    };
+
+    // Terminal
+    terminal: {
+        create: (id: string, context: { cwd: string; username?: string; token?: string }) => Promise<{ cols: number; rows: number }>;
+        write: (id: string, data: string) => Promise<void>;
+        resize: (id: string, cols: number, rows: number) => Promise<void>;
+        setContext: (id: string, context: { cwd: string; username?: string; token?: string }) => Promise<void>;
+        destroy: (id: string) => Promise<void>;
+        onData: (callback: (data: { id: string; data: string }) => void) => void;
+        onExit: (callback: (data: { id: string; exitCode: number }) => void) => void;
+        removeDataListener: () => void;
+        removeExitListener: () => void;
+    };
 }
 
 export interface Account {
@@ -337,6 +365,43 @@ const electronAPI: ElectronAPI = {
         writeFile: (path, content) => ipcRenderer.invoke('fs:writeFile', path, content),
         readFile: (path) => ipcRenderer.invoke('fs:readFile', path),
         checkFileExists: (path: string) => ipcRenderer.invoke('fs:exists', path),
+    },
+
+    update: {
+        checkForUpdates: () => ipcRenderer.invoke('update:check'),
+        downloadUpdate: () => ipcRenderer.invoke('update:download'),
+        quitAndInstall: () => ipcRenderer.invoke('update:install'),
+        onStatusChange: (callback) => {
+            ipcRenderer.on('update:status', (_event, status) => callback(status));
+        },
+        removeStatusListener: () => {
+            ipcRenderer.removeAllListeners('update:status');
+        },
+    },
+
+    storage: {
+        get: (key: string) => ipcRenderer.invoke('storage:get', key),
+        set: (key: string, value: any) => ipcRenderer.invoke('storage:set', key, value),
+    },
+
+    terminal: {
+        create: (id, context) => ipcRenderer.invoke('terminal:create', id, context),
+        write: (id, data) => ipcRenderer.invoke('terminal:write', id, data),
+        resize: (id, cols, rows) => ipcRenderer.invoke('terminal:resize', id, cols, rows),
+        setContext: (id, context) => ipcRenderer.invoke('terminal:setContext', id, context),
+        destroy: (id) => ipcRenderer.invoke('terminal:destroy', id),
+        onData: (callback) => {
+            ipcRenderer.on('terminal:data', (_event, data) => callback(data));
+        },
+        onExit: (callback) => {
+            ipcRenderer.on('terminal:exit', (_event, data) => callback(data));
+        },
+        removeDataListener: () => {
+            ipcRenderer.removeAllListeners('terminal:data');
+        },
+        removeExitListener: () => {
+            ipcRenderer.removeAllListeners('terminal:exit');
+        },
     },
 };
 

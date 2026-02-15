@@ -19,7 +19,7 @@ export function graphToYaml(
     // ── 1. Build `on:` from trigger node ─────────────────────────
 
     const triggerNode = nodes.find((n) => n.type === 'trigger');
-    if (triggerNode?.data?.triggers?.length > 0) {
+    if (triggerNode && triggerNode.data?.triggers?.length > 0) {
         const triggers = triggerNode.data.triggers as {
             event: string;
             branches?: string[];

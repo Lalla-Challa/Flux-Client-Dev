@@ -86,6 +86,42 @@ export interface ElectronAPI {
         readFile: (path: string) => Promise<string>;
         checkFileExists: (path: string) => Promise<boolean>;
     };
+    update: {
+        checkForUpdates: () => Promise<UpdateStatus>;
+        downloadUpdate: () => Promise<void>;
+        quitAndInstall: () => void;
+        onStatusChange: (callback: (status: UpdateStatus) => void) => void;
+        removeStatusListener: () => void;
+    };
+    storage: {
+        get: (key: string) => Promise<any>;
+        set: (key: string, value: any) => Promise<void>;
+    };
+    terminal: {
+        create: (id: string, context: TerminalContext) => Promise<{ cols: number; rows: number }>;
+        write: (id: string, data: string) => Promise<void>;
+        resize: (id: string, cols: number, rows: number) => Promise<void>;
+        setContext: (id: string, context: TerminalContext) => Promise<void>;
+        destroy: (id: string) => Promise<void>;
+        onData: (callback: (data: { id: string; data: string }) => void) => void;
+        onExit: (callback: (data: { id: string; exitCode: number }) => void) => void;
+        removeDataListener: () => void;
+        removeExitListener: () => void;
+    };
+}
+
+export interface UpdateStatus {
+    status: 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
+    version?: string;
+    releaseNotes?: string;
+    progress?: { percent: number; bytesPerSecond: number; transferred: number; total: number };
+    error?: string;
+}
+
+export interface TerminalContext {
+    cwd: string;
+    username?: string;
+    token?: string;
 }
 
 declare global {

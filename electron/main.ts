@@ -10,12 +10,16 @@ import { GitService } from './services/git.service';
 import { AuthService } from './services/auth.service';
 import { RepoScannerService } from './services/repo-scanner.service';
 import { GitHubService } from './services/github.service';
+import { UpdaterService } from './services/updater.service';
+import { TerminalService } from './services/terminal.service';
 
 let mainWindow: BrowserWindow | null = null;
 const gitService = new GitService();
 const authService = new AuthService();
 const repoScanner = new RepoScannerService(gitService);
 const githubService = new GitHubService();
+const updaterService = new UpdaterService();
+const terminalService = new TerminalService();
 
 const isDev = process.env.NODE_ENV !== 'production' || !app.isPackaged;
 
@@ -456,6 +460,34 @@ function registerIpcHandlers(): void {
         return gitService.setUpstream(repoPath, branch, remote);
     });
 
+    // ── Update ──
+    ipcMain.handle('update:check', async () => {
+        return updaterService.checkForUpdates();
+    });
+    ipcMain.handle('update:download', async () => {
+        return updaterService.downloadUpdate();
+    });
+    ipcMain.handle('update:install', () => {
+        updaterService.quitAndInstall();
+    });
+
+    // ── Terminal ──
+    ipcMain.handle('terminal:create', async (_event, id: string, context: { cwd: string; username?: string; token?: string }) => {
+        return terminalService.createTerminal(id, context);
+    });
+    ipcMain.handle('terminal:write', async (_event, id: string, data: string) => {
+        terminalService.writeToTerminal(id, data);
+    });
+    ipcMain.handle('terminal:resize', async (_event, id: string, cols: number, rows: number) => {
+        terminalService.resizeTerminal(id, cols, rows);
+    });
+    ipcMain.handle('terminal:setContext', async (_event, id: string, context: { cwd: string; username?: string; token?: string }) => {
+        terminalService.setTerminalContext(id, context);
+    });
+    ipcMain.handle('terminal:destroy', async (_event, id: string) => {
+        terminalService.destroyTerminal(id);
+    });
+
     // ── Shell ──
     ipcMain.handle('shell:openExternal', async (_event, url: string) => {
         return shell.openExternal(url);
@@ -482,6 +514,30 @@ function registerIpcHandlers(): void {
         const fs = require('fs');
         return fs.existsSync(filePath);
     });
+
+    // ── Storage (persists JSON data in userData) ──
+    ipcMain.handle('storage:get', async (_event, key: string) => {
+        const fs = require('fs');
+        const filePath = path.join(app.getPath('userData'), `${key}.json`);
+        try {
+            if (fs.existsSync(filePath)) {
+                const data = fs.readFileSync(filePath, 'utf8');
+                return JSON.parse(data);
+            }
+        } catch (e) {
+            console.error(`Failed to read storage key "${key}":`, e);
+        }
+        return null;
+    });
+    ipcMain.handle('storage:set', async (_event, key: string, value: any) => {
+        const fs = require('fs');
+        const filePath = path.join(app.getPath('userData'), `${key}.json`);
+        try {
+            fs.writeFileSync(filePath, JSON.stringify(value), 'utf8');
+        } catch (e) {
+            console.error(`Failed to write storage key "${key}":`, e);
+        }
+    });
 }
 
 // ─── App Lifecycle ───────────────────────────────────────────────
@@ -489,6 +545,18 @@ function registerIpcHandlers(): void {
 app.whenReady().then(() => {
     registerIpcHandlers();
     createWindow();
+
+    if (mainWindow) {
+        updaterService.setWindow(mainWindow);
+        terminalService.setWindow(mainWindow);
+    }
+
+    // Check for updates in production after a short delay
+    if (!isDev) {
+        setTimeout(() => {
+            updaterService.checkForUpdates();
+        }, 5000);
+    }
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
@@ -498,6 +566,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+    terminalService.destroyAll();
     if (process.platform !== 'darwin') {
         app.quit();
     }

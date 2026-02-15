@@ -127,6 +127,7 @@ interface RepoState {
     unstageFiles: (files: string[]) => Promise<void>;
     commitChanges: (message: string) => Promise<void>;
     commitAndPush: (message: string) => Promise<void>;
+    pushOnly: () => Promise<void>;
     syncRepo: (token: string) => Promise<{ success: boolean; error?: string; conflicts?: string[] }>;
     checkoutBranch: (branch: string, create?: boolean) => Promise<void>;
     publishBranch: (token: string) => Promise<void>;
@@ -647,7 +648,6 @@ export const useRepoStore = create<RepoState>((set, get) => ({
         try {
             // 1. Commit
             await api().git.commit(activeRepoPath, message);
-            ui.setCommitMessage('');
 
             // 2. Push
             // Try to find token from repo's accountId or active account
@@ -658,30 +658,69 @@ export const useRepoStore = create<RepoState>((set, get) => ({
             if (account?.token) {
                 try {
                     await api().git.push(activeRepoPath, account.token);
+                    ui.setCommitMessage(''); // Only clear on successful push
                     ui.showNotification('success', 'Committed & pushed!');
                 } catch (pushError: any) {
-                    if (pushError.message.includes('non-fast-forward') || pushError.message.includes('rejected')) {
-                        if (confirm('Push rejected (remote is ahead). This often happens after undoing a commit. Force push? \n\nWARNING: This will overwrite remote changes.')) {
-                            ui.showNotification('info', 'Force pushing...');
-                            await api().git.push(activeRepoPath, account.token, undefined, undefined, undefined, true);
-                            ui.showNotification('success', 'Force push successful!');
-                        } else {
-                            throw pushError; // Re-throw to be caught by outer catch
-                        }
-                    } else {
-                        throw pushError;
-                    }
+                    // Commit succeeded but push failed
+                    ui.showNotification('warning', 'Committed locally, but push failed: ' + (pushError.message || 'Unknown error'));
+                    // Don't clear commit message so user can see what was committed
+                    // They can use the "Push" button to retry
                 }
             } else {
+                ui.setCommitMessage(''); // Clear on commit if no account
                 ui.showNotification('info', 'Committed locally (no GitHub account linked)');
             }
 
             get().refreshStatus();
             get().refreshLog();
         } catch (error: any) {
-            ui.showNotification('error', error.message || 'Commit & Push failed');
+            ui.showNotification('error', error.message || 'Commit failed');
         } finally {
             ui.setIsCommitting(false);
+        }
+    },
+
+    pushOnly: async () => {
+        const { activeRepoPath } = get();
+        if (!activeRepoPath) return;
+
+        const ui = useUIStore.getState();
+        const accountStore = useAccountStore.getState();
+
+        const repo = get().repos.find((r) => r.path === activeRepoPath);
+        const accountId = repo?.accountId || accountStore.activeAccountId;
+        const account = accountStore.accounts.find((a) => a.id === accountId);
+
+        if (!account?.token) {
+            ui.showNotification('error', 'No GitHub account linked');
+            return;
+        }
+
+        ui.setIsSyncing(true);
+        try {
+            await api().git.push(activeRepoPath, account.token);
+            ui.setCommitMessage(''); // Clear message after successful push
+            ui.showNotification('success', 'Pushed successfully!');
+            get().refreshStatus();
+            get().refreshLog();
+        } catch (error: any) {
+            if (error.message.includes('non-fast-forward') || error.message.includes('rejected')) {
+                if (confirm('Push rejected (remote is ahead). Force push? \n\nWARNING: This will overwrite remote changes.')) {
+                    try {
+                        await api().git.push(activeRepoPath, account.token, undefined, undefined, undefined, true);
+                        ui.setCommitMessage(''); // Clear message after successful force push
+                        ui.showNotification('success', 'Force push successful!');
+                        get().refreshStatus();
+                        get().refreshLog();
+                    } catch (forceError: any) {
+                        ui.showNotification('error', 'Force push failed: ' + (forceError.message || 'Unknown error'));
+                    }
+                }
+            } else {
+                ui.showNotification('error', 'Push failed: ' + (error.message || 'Unknown error'));
+            }
+        } finally {
+            ui.setIsSyncing(false);
         }
     },
 
