@@ -71,9 +71,9 @@ export function ChangesTab() {
     return (
         <div className="flex h-full">
             {/* File List Panel */}
-            <div className="w-[280px] border-r border-border flex flex-col shrink-0 bg-surface-0">
+            <div className="w-[320px] border-r border-border flex flex-col shrink-0 bg-surface-0">
                 {/* Commit Message */}
-                <div className="p-3 border-b border-border">
+                <div className="px-3 pt-3 pb-4 border-b border-border">
                     <textarea
                         ref={textareaRef}
                         key={`commit-msg-${activeRepoPath}`}
@@ -85,7 +85,7 @@ export function ChangesTab() {
                         rows={3}
                         autoFocus={false}
                     />
-                    <div className="flex items-center justify-between mt-2 gap-2">
+                    <div className="flex items-center justify-between mt-3 mb-2 gap-2">
                         <span className="text-2xs text-text-tertiary">
                             {stagedFiles.length} staged
                         </span>
@@ -104,8 +104,8 @@ export function ChangesTab() {
                                     !commitMessage.trim()
                                         ? "Enter a commit message"
                                         : stagedFiles.length === 0
-                                        ? "Stage files to commit"
-                                        : "Commit and push changes"
+                                            ? "Stage files to commit"
+                                            : "Commit and push changes"
                                 }
                             >
                                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

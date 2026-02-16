@@ -15,6 +15,7 @@ import { FilesTab } from '../tabs/FilesTab';
 import { NewRepoModal } from '../modals/NewRepoModal';
 import { CommitDetailsModal } from '../modals/CommitDetailsModal';
 import { CloneModal } from '../modals/CloneModal';
+import { TimeMachineModal } from '../modals/TimeMachineModal';
 import { ThemeToggle } from '../common/ThemeToggle';
 
 const APP_VERSION = '1.0.0';
@@ -129,6 +130,8 @@ export function MainView() {
     const setShowNewRepoModal = useUIStore((s) => s.setShowNewRepoModal);
 
     const needsRepo = activeTab !== 'cloud' && activeTab !== 'settings';
+    // Only show empty content if there's truly no active repo path
+    // Don't show it if we have a path but the repo object is temporarily missing from the array
     const showEmptyContent = needsRepo && !activeRepoPath;
 
     return (
@@ -259,6 +262,7 @@ export function MainView() {
             />
             <CommitDetailsModal />
             <CloneModal />
+            <TimeMachineModal />
         </div>
     );
 }

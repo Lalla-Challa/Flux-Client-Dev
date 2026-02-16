@@ -2,6 +2,7 @@ import { execFile, ExecFileOptions } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import { BrowserWindow } from 'electron';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -53,6 +54,15 @@ export interface SyncResult {
     error?: string;
 }
 
+export interface ReflogEntry {
+    hash: string;
+    shortHash: string;
+    action: string;
+    description: string;
+    date: string;
+    index: number;
+}
+
 // ─── GIT_ASKPASS Helper ──────────────────────────────────────────
 
 /**
@@ -88,6 +98,18 @@ function cleanupAskPassScript(scriptPath: string): void {
 // ─── GitService Class ────────────────────────────────────────────
 
 export class GitService {
+    private mainWindow: BrowserWindow | null = null;
+    private commandCounter = 0;
+
+    setWindow(win: BrowserWindow): void {
+        this.mainWindow = win;
+    }
+
+    private sanitizeArgs(args: string[], token?: string): string[] {
+        if (!token) return args;
+        return args.map(a => (a === token || a.includes(token)) ? '***' : a);
+    }
+
     async checkoutPullRequest(repoPath: string, prNumber: number, branchName?: string): Promise<void> {
         const localBranch = branchName || `pr/${prNumber}`;
         // Fetch the PR head to a local branch
@@ -184,6 +206,21 @@ export class GitService {
             timeout: 60000, // 60s timeout
         };
 
+        // Broadcast activity start
+        const commandId = `cmd-${Date.now()}-${++this.commandCounter}`;
+        const safeArgs = this.sanitizeArgs(args, token);
+        const commandStr = `git ${safeArgs.join(' ')}`;
+        const startedAt = Date.now();
+
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.send('activity:command-start', {
+                id: commandId,
+                command: commandStr,
+                repoPath,
+                startedAt,
+            });
+        }
+
         return new Promise<ExecResult>((resolve) => {
             execFile('git', args, options, (error, stdout, stderr) => {
                 // Cleanup askpass script immediately
@@ -191,10 +228,28 @@ export class GitService {
                     cleanupAskPassScript(askPassScript);
                 }
 
+                const code = error ? (error as any).code || 1 : 0;
+                const completedAt = Date.now();
+
+                // Broadcast activity complete
+                if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+                    this.mainWindow.webContents.send('activity:command-complete', {
+                        id: commandId,
+                        command: commandStr,
+                        repoPath,
+                        startedAt,
+                        completedAt,
+                        durationMs: completedAt - startedAt,
+                        exitCode: code,
+                        status: code === 0 ? 'success' : 'error',
+                        errorMessage: code !== 0 ? (stderr?.toString() || '').trim() : undefined,
+                    });
+                }
+
                 resolve({
                     stdout: stdout?.toString() || '',
                     stderr: stderr?.toString() || '',
-                    code: error ? (error as any).code || 1 : 0,
+                    code,
                 });
             });
         });
@@ -905,6 +960,42 @@ export class GitService {
             return '';
         }
         return result.stdout;
+    }
+
+    // ── Reflog ──
+
+    async reflog(repoPath: string, limit = 100): Promise<ReflogEntry[]> {
+        const separator = '---REFLOG_SEP---';
+        const format = `%H%n%h%n%gs%n%ci${separator}`;
+        const result = await this.exec(repoPath, [
+            'reflog',
+            `--max-count=${limit}`,
+            `--format=${format}`,
+        ]);
+
+        if (result.code !== 0) {
+            return [];
+        }
+
+        return result.stdout
+            .split(separator)
+            .filter(block => block.trim())
+            .map((block, index) => {
+                const lines = block.trim().split('\n');
+                const description = lines[2] || '';
+                // Extract action type from reflog subject (e.g. "commit:", "checkout:", "reset:", "merge:")
+                const actionMatch = description.match(/^(\w+)(?:\s*\(.*?\))?:/);
+                const action = actionMatch ? actionMatch[1] : 'unknown';
+
+                return {
+                    hash: lines[0] || '',
+                    shortHash: lines[1] || '',
+                    action,
+                    description,
+                    date: lines[3] || '',
+                    index,
+                };
+            });
     }
 }
 

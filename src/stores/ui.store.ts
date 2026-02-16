@@ -17,14 +17,16 @@ interface UIState {
     showNewRepoModal: boolean;
     branchCreateRequested: boolean;
     notification: { type: 'success' | 'error' | 'info'; message: string } | null;
+    bottomPanel: 'terminal' | 'activity';
 
     // Generic modal state to avoid clutter
     modalState: {
-        type: 'commit-details' | 'clone' | null;
+        type: 'commit-details' | 'clone' | 'time-machine' | null;
         data: any;
     };
-    openModal: (type: 'commit-details' | 'clone', data: any) => void;
+    openModal: (type: 'commit-details' | 'clone' | 'time-machine', data: any) => void;
     closeModal: () => void;
+    setBottomPanel: (panel: 'terminal' | 'activity') => void;
 
     // Actions
     setActiveTab: (tab: TabId) => void;
@@ -59,6 +61,7 @@ export const useUIStore = create<UIState>((set) => ({
     showNewRepoModal: false,
     branchCreateRequested: false,
     notification: null,
+    bottomPanel: 'terminal',
     modalState: { type: null, data: null },
 
     setActiveTab: (tab) => set({ activeTab: tab }),
@@ -94,6 +97,7 @@ export const useUIStore = create<UIState>((set) => ({
 
     openModal: (type, data) => set({ modalState: { type, data } }),
     closeModal: () => set({ modalState: { type: null, data: null } }),
+    setBottomPanel: (panel) => set({ bottomPanel: panel }),
 
     showNotification: (type, message) => {
         set({ notification: { type, message } });

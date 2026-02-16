@@ -445,6 +445,10 @@ function registerIpcHandlers(): void {
         return gitService.getFileContent(repoPath, path, ref);
     });
 
+    ipcMain.handle('git:reflog', async (_event, repoPath: string, limit?: number) => {
+        return gitService.reflog(repoPath, limit);
+    });
+
     ipcMain.handle('git:clone', async (_event, url: string, destination: string, token?: string) => {
         return gitService.clone(url, destination, token, (progress) => {
             mainWindow?.webContents.send('git:cloneProgress', progress);
@@ -549,6 +553,7 @@ app.whenReady().then(() => {
     if (mainWindow) {
         updaterService.setWindow(mainWindow);
         terminalService.setWindow(mainWindow);
+        gitService.setWindow(mainWindow);
     }
 
     // Check for updates in production after a short delay

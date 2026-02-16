@@ -97,6 +97,7 @@ export interface ElectronAPI {
         cherryPick: (repoPath: string, commitHash: string) => Promise<void>;
         squashCommits: (repoPath: string, count: number, message: string) => Promise<void>;
         rewordCommit: (repoPath: string, newMessage: string) => Promise<void>;
+        reflog: (repoPath: string, limit?: number) => Promise<any[]>;
     };
 
     // Dialog
@@ -130,6 +131,13 @@ export interface ElectronAPI {
     storage: {
         get: (key: string) => Promise<any>;
         set: (key: string, value: any) => Promise<void>;
+    };
+
+    // Activity Log
+    activity: {
+        onCommandStart: (callback: (data: any) => void) => void;
+        onCommandComplete: (callback: (data: any) => void) => void;
+        removeActivityListeners: () => void;
     };
 
     // Terminal
@@ -350,6 +358,7 @@ const electronAPI: ElectronAPI = {
         cherryPick: (repoPath: string, commitHash: string) => ipcRenderer.invoke('git:cherryPick', repoPath, commitHash),
         squashCommits: (repoPath: string, count: number, message: string) => ipcRenderer.invoke('git:squashCommits', repoPath, count, message),
         rewordCommit: (repoPath: string, newMessage: string) => ipcRenderer.invoke('git:rewordCommit', repoPath, newMessage),
+        reflog: (repoPath: string, limit?: number) => ipcRenderer.invoke('git:reflog', repoPath, limit),
     },
 
     dialog: {
@@ -382,6 +391,19 @@ const electronAPI: ElectronAPI = {
     storage: {
         get: (key: string) => ipcRenderer.invoke('storage:get', key),
         set: (key: string, value: any) => ipcRenderer.invoke('storage:set', key, value),
+    },
+
+    activity: {
+        onCommandStart: (callback) => {
+            ipcRenderer.on('activity:command-start', (_event, data) => callback(data));
+        },
+        onCommandComplete: (callback) => {
+            ipcRenderer.on('activity:command-complete', (_event, data) => callback(data));
+        },
+        removeActivityListeners: () => {
+            ipcRenderer.removeAllListeners('activity:command-start');
+            ipcRenderer.removeAllListeners('activity:command-complete');
+        },
     },
 
     terminal: {

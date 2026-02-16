@@ -4,12 +4,18 @@ import { AccountSidebar } from './components/layout/AccountSidebar';
 import { RepoSidebar } from './components/layout/RepoSidebar';
 import { MainView } from './components/layout/MainView';
 import { BottomTerminal } from './components/layout/BottomTerminal';
+import { ActivityPanel } from './components/layout/ActivityPanel';
 import { ConflictPanel } from './components/conflicts/ConflictPanel';
+import { CommandPalette } from './components/common/CommandPalette';
+import { MacroEditorModal } from './components/modals/MacroEditorModal';
 import { useAccountStore } from './stores/account.store';
 import { useRepoStore } from './stores/repo.store';
 import { useUIStore } from './stores/ui.store';
+import { useActivityStore } from './stores/activity.store';
+import { useCommandPaletteStore } from './stores/command-palette.store';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { UpdateToast } from './components/common/UpdateToast';
+import { registerDefaultCommands } from './lib/default-commands';
 
 export default function App() {
     const loadAccounts = useAccountStore((s) => s.loadAccounts);
@@ -19,11 +25,44 @@ export default function App() {
     const repoSidebarCollapsed = useUIStore((s) => s.repoSidebarCollapsed);
     const terminalExpanded = useUIStore((s) => s.terminalExpanded);
     const terminalHeight = useUIStore((s) => s.terminalHeight);
+    const bottomPanel = useUIStore((s) => s.bottomPanel);
 
     useEffect(() => {
         loadAccounts();
         loadSavedRepos();
+        registerDefaultCommands();
+        useCommandPaletteStore.getState().loadMacros();
     }, [loadAccounts, loadSavedRepos]);
+
+    // ── Activity log IPC listeners ──
+    useEffect(() => {
+        const api = (window as any).electronAPI;
+        if (!api?.activity) return;
+
+        api.activity.onCommandStart((data: any) => {
+            useActivityStore.getState().addEntry({
+                id: data.id,
+                command: data.command,
+                repoPath: data.repoPath,
+                status: 'running',
+                startedAt: data.startedAt,
+            });
+        });
+
+        api.activity.onCommandComplete((data: any) => {
+            useActivityStore.getState().updateEntry(data.id, {
+                status: data.status,
+                completedAt: data.completedAt,
+                durationMs: data.durationMs,
+                exitCode: data.exitCode,
+                errorMessage: data.errorMessage,
+            });
+        });
+
+        return () => {
+            api.activity.removeActivityListeners();
+        };
+    }, []);
 
     // ── Centralized keyboard shortcuts ──
     useEffect(() => {
@@ -41,6 +80,14 @@ export default function App() {
                 e.preventDefault();
                 e.stopPropagation();
                 useUIStore.getState().toggleTerminal();
+                return;
+            }
+
+            // Ctrl+K → Command palette (always active)
+            if (isCtrl && !isShift && !e.altKey && key === 'k') {
+                e.preventDefault();
+                e.stopPropagation();
+                useCommandPaletteStore.getState().toggle();
                 return;
             }
 
@@ -224,7 +271,7 @@ export default function App() {
                             <MainView />
                         </div>
 
-                        {/* Bottom Terminal - always mounted, animated via height */}
+                        {/* Bottom Panel - Terminal or Activity Log */}
                         <motion.div
                             animate={{ height: terminalExpanded ? terminalHeight : 0 }}
                             transition={{ duration: 0.2, ease: 'easeInOut' }}
@@ -233,26 +280,54 @@ export default function App() {
                             }`}
                         >
                             <div style={{ height: terminalHeight }} className="h-full">
-                                <BottomTerminal />
+                                {bottomPanel === 'terminal' ? (
+                                    <BottomTerminal />
+                                ) : (
+                                    <ActivityPanel />
+                                )}
                             </div>
                         </motion.div>
 
-                        {/* Terminal Toggle Bar */}
+                        {/* Bottom Panel Toggle Bar */}
                         <div
-                            className="flex items-center h-8 px-3 bg-surface-1 border-t border-border cursor-pointer hover:bg-surface-2 transition-colors shrink-0"
-                            onClick={() => useUIStore.getState().toggleTerminal()}
+                            className="flex items-center h-8 px-3 bg-surface-1 border-t border-border shrink-0"
                         >
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1">
                                 <svg
-                                    className={`w-3 h-3 text-text-tertiary transition-transform ${terminalExpanded ? 'rotate-180' : ''
-                                        }`}
+                                    className={`w-3 h-3 text-text-tertiary transition-transform cursor-pointer ${terminalExpanded ? 'rotate-180' : ''}`}
                                     fill="none"
                                     viewBox="0 0 24 24"
                                     stroke="currentColor"
+                                    onClick={() => useUIStore.getState().toggleTerminal()}
                                 >
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
                                 </svg>
-                                <span className="text-xs text-text-tertiary font-mono">Terminal</span>
+                                <button
+                                    onClick={() => {
+                                        useUIStore.getState().setBottomPanel('terminal');
+                                        if (!terminalExpanded) useUIStore.getState().toggleTerminal();
+                                    }}
+                                    className={`text-xs font-mono px-2 py-0.5 rounded transition-colors ${
+                                        bottomPanel === 'terminal'
+                                            ? 'text-text-primary bg-surface-2'
+                                            : 'text-text-tertiary hover:text-text-secondary'
+                                    }`}
+                                >
+                                    Terminal
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        useUIStore.getState().setBottomPanel('activity');
+                                        if (!terminalExpanded) useUIStore.getState().toggleTerminal();
+                                    }}
+                                    className={`text-xs font-mono px-2 py-0.5 rounded transition-colors ${
+                                        bottomPanel === 'activity'
+                                            ? 'text-text-primary bg-surface-2'
+                                            : 'text-text-tertiary hover:text-text-secondary'
+                                    }`}
+                                >
+                                    Activity Log
+                                </button>
                             </div>
                             <div className="flex-1" />
                             <span className="text-2xs text-text-tertiary">Ctrl+J</span>
@@ -286,6 +361,12 @@ export default function App() {
                 <AnimatePresence>
                     {showConflictPanel && <ConflictPanel />}
                 </AnimatePresence>
+
+                {/* ── Command Palette ── */}
+                <CommandPalette />
+
+                {/* ── Macro Editor ── */}
+                <MacroEditorModal />
             </div>
         </ErrorBoundary>
     );

@@ -77,6 +77,7 @@ export interface ElectronAPI {
         cherryPick: (repoPath: string, commitHash: string) => Promise<void>;
         squashCommits: (repoPath: string, count: number, message: string) => Promise<void>;
         rewordCommit: (repoPath: string, newMessage: string) => Promise<void>;
+        reflog: (repoPath: string, limit?: number) => Promise<ReflogEntry[]>;
     };
     dialog: {
         openDirectory: () => Promise<string | null>;
@@ -96,6 +97,11 @@ export interface ElectronAPI {
     storage: {
         get: (key: string) => Promise<any>;
         set: (key: string, value: any) => Promise<void>;
+    };
+    activity: {
+        onCommandStart: (callback: (data: ActivityCommandStart) => void) => void;
+        onCommandComplete: (callback: (data: ActivityCommandComplete) => void) => void;
+        removeActivityListeners: () => void;
     };
     terminal: {
         create: (id: string, context: TerminalContext) => Promise<{ cols: number; rows: number }>;
@@ -122,6 +128,34 @@ export interface TerminalContext {
     cwd: string;
     username?: string;
     token?: string;
+}
+
+export interface ReflogEntry {
+    hash: string;
+    shortHash: string;
+    action: string;
+    description: string;
+    date: string;
+    index: number;
+}
+
+export interface ActivityCommandStart {
+    id: string;
+    command: string;
+    repoPath: string;
+    startedAt: number;
+}
+
+export interface ActivityCommandComplete {
+    id: string;
+    command: string;
+    repoPath: string;
+    startedAt: number;
+    completedAt: number;
+    durationMs: number;
+    exitCode: number;
+    status: 'success' | 'error';
+    errorMessage?: string;
 }
 
 declare global {

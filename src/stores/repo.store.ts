@@ -166,6 +166,12 @@ interface RepoState {
     diffCtx: { original: string; modified: string; language: string; file: string } | null;
     isLoadingDiff: boolean;
     loadDiffContext: (file: string) => Promise<void>;
+
+    // Reflog / Time Machine
+    reflogEntries: { hash: string; shortHash: string; action: string; description: string; date: string; index: number }[];
+    isLoadingReflog: boolean;
+    loadReflog: () => Promise<void>;
+    restoreToReflog: (hash: string) => Promise<void>;
 }
 
 const api = () => (window as any).electronAPI;
@@ -209,6 +215,9 @@ export const useRepoStore = create<RepoState>((set, get) => ({
 
     blameData: null,
     isLoadingBlame: false,
+
+    reflogEntries: [],
+    isLoadingReflog: false,
 
     loadSavedRepos: async () => {
         try {
@@ -1190,6 +1199,36 @@ export const useRepoStore = create<RepoState>((set, get) => ({
         } catch (error) {
             console.error('Failed to load diff context:', error);
             set({ diffCtx: null, isLoadingDiff: false });
+        }
+    },
+
+    loadReflog: async () => {
+        const { activeRepoPath } = get();
+        if (!activeRepoPath) return;
+
+        set({ isLoadingReflog: true });
+        try {
+            const entries = await api().git.reflog(activeRepoPath, 100);
+            set({ reflogEntries: entries, isLoadingReflog: false });
+        } catch (error) {
+            console.error('Failed to load reflog:', error);
+            set({ reflogEntries: [], isLoadingReflog: false });
+        }
+    },
+
+    restoreToReflog: async (hash: string) => {
+        const { activeRepoPath } = get();
+        if (!activeRepoPath) return;
+
+        try {
+            await api().git.reset(activeRepoPath, 'hard', hash);
+            useUIStore.getState().showNotification('success', `Restored to ${hash.slice(0, 7)}`);
+            useUIStore.getState().closeModal();
+            get().refreshStatus();
+            get().refreshBranches();
+            get().refreshLog();
+        } catch (error: any) {
+            useUIStore.getState().showNotification('error', error.message || 'Restore failed');
         }
     },
 }));

@@ -18,6 +18,16 @@ nsis:
   allowToChangeInstallationDirectory: true
   allowElevation: true
   deleteAppDataOnUninstall: false
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+  icon: resources/logo.png
+  category: Development
 publish:
   provider: github
   owner: Lalla-Challa
