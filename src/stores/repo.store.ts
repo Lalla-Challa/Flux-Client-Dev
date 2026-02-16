@@ -85,6 +85,7 @@ interface RepoState {
     setActiveRepo: (path: string) => void;
     setRepos: (repos: RepoInfo[]) => void;
     scanDirectory: (rootPath: string) => Promise<void>;
+    removeRepo: (path: string) => void;
 
     // Cloud repo actions
     loadCloudRepos: (token: string) => Promise<void>;
@@ -287,6 +288,47 @@ export const useRepoStore = create<RepoState>((set, get) => ({
     setRepos: (repos) => {
         set({ repos });
         persistRepos(repos, get().activeRepoPath);
+    },
+
+    removeRepo: (path) => {
+        set((state) => {
+            const updatedRepos = state.repos.filter((r) => r.path !== path);
+            let newActiveRepoPath = state.activeRepoPath;
+
+            // If removing the active repo, switch to another or clear
+            if (state.activeRepoPath === path) {
+                // Try to switch to the most recently opened repo
+                const recentRepos = updatedRepos
+                    .filter(r => r.lastOpened)
+                    .sort((a, b) => (b.lastOpened || 0) - (a.lastOpened || 0));
+
+                newActiveRepoPath = recentRepos[0]?.path || updatedRepos[0]?.path || null;
+            }
+
+            persistRepos(updatedRepos, newActiveRepoPath);
+
+            return {
+                repos: updatedRepos,
+                activeRepoPath: newActiveRepoPath,
+                // Clear repo-specific state if we removed the active repo
+                ...(state.activeRepoPath === path && {
+                    fileStatuses: [],
+                    commits: [],
+                    branches: [],
+                    currentDiff: '',
+                }),
+            };
+        });
+
+        // If we switched to a different repo, refresh its state
+        const newActive = get().activeRepoPath;
+        if (newActive && newActive !== path) {
+            setTimeout(() => {
+                get().refreshStatus();
+                get().refreshBranches();
+                get().refreshLog();
+            }, 0);
+        }
     },
 
     scanDirectory: async (rootPath) => {
@@ -627,9 +669,10 @@ export const useRepoStore = create<RepoState>((set, get) => ({
         set({ isLoadingStatus: true });
         try {
             const fileStatuses = await api().git.status(activeRepoPath);
-            set({ fileStatuses, isLoadingStatus: false });
+            set({ fileStatuses });
         } catch (error) {
             console.error('Status refresh failed:', error);
+        } finally {
             set({ isLoadingStatus: false });
         }
     },
@@ -996,11 +1039,22 @@ export const useRepoStore = create<RepoState>((set, get) => ({
         const { activeRepoPath } = get();
         if (!activeRepoPath) return;
 
-        if (!confirm('Undo last commit? This will keep your changes staged.')) return;
-
-        await api().git.reset(activeRepoPath, 'soft', 'HEAD~1');
-        get().refreshStatus();
-        get().refreshLog();
+        try {
+            await api().git.reset(activeRepoPath, 'soft', 'HEAD~1');
+            // Refresh all git state after reset
+            await Promise.all([
+                get().refreshStatus(),
+                get().refreshBranches(),
+                get().refreshLog(),
+            ]);
+            useUIStore.getState().showNotification('success', 'Commit undone, changes staged');
+        } catch (error: any) {
+            useUIStore.getState().showNotification('error', error.message || 'Failed to undo commit');
+            // Even on error, refresh to show current state
+            get().refreshStatus();
+            get().refreshBranches();
+            get().refreshLog();
+        }
     },
 
     deleteLastCommit: async () => {

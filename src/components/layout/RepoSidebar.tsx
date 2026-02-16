@@ -8,6 +8,7 @@ export function RepoSidebar() {
     const repos = useRepoStore((s) => s.repos);
     const activeRepoPath = useRepoStore((s) => s.activeRepoPath);
     const setActiveRepo = useRepoStore((s) => s.setActiveRepo);
+    const removeRepo = useRepoStore((s) => s.removeRepo);
     const scanDirectory = useRepoStore((s) => s.scanDirectory);
     const isScanning = useRepoStore((s) => s.isScanning);
     const activeAccountId = useAccountStore((s) => s.activeAccountId);
@@ -151,6 +152,11 @@ export function RepoSidebar() {
                             repo={repo}
                             isActive={repo.path === activeRepoPath}
                             onClick={() => setActiveRepo(repo.path)}
+                            onRemove={() => {
+                                if (confirm(`Remove "${repo.name}" from the app?\n\nThis will only remove it from the list, not delete the folder.`)) {
+                                    removeRepo(repo.path);
+                                }
+                            }}
                         />
                     ))
                 )}
@@ -170,16 +176,18 @@ function RepoItem({
     repo,
     isActive,
     onClick,
+    onRemove,
 }: {
     repo: RepoInfo;
     isActive: boolean;
     onClick: () => void;
+    onRemove: () => void;
 }) {
     return (
         <motion.div
             whileHover={{ x: 2 }}
             onClick={onClick}
-            className={`sidebar-item mb-0.5 ${isActive ? 'active' : ''}`}
+            className={`sidebar-item mb-0.5 group relative ${isActive ? 'active' : ''}`}
         >
             {/* Repo icon */}
             <div className="shrink-0">
@@ -201,6 +209,20 @@ function RepoItem({
                     <span className="badge-branch">{repo.branch}</span>
                 </div>
             </div>
+
+            {/* Remove button (visible on hover) */}
+            <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onRemove();
+                }}
+                className="opacity-0 group-hover:opacity-100 shrink-0 p-1 hover:bg-surface-4 rounded text-text-tertiary hover:text-status-deleted transition-all"
+                title="Remove from app"
+            >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
         </motion.div>
     );
 }

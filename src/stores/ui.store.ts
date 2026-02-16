@@ -2,12 +2,20 @@ import { create } from 'zustand';
 
 export type TabId = 'changes' | 'history' | 'branches' | 'cloud' | 'settings' | 'pull-requests' | 'actions' | 'issues' | 'files';
 
+export interface TerminalInstance {
+    id: string;
+    title: string;
+    createdAt: number;
+}
+
 interface UIState {
     activeTab: TabId;
     theme: 'dark' | 'light';
     repoSidebarCollapsed: boolean;
     terminalExpanded: boolean;
     terminalHeight: number;
+    terminals: TerminalInstance[];
+    activeTerminalId: string | null;
     selectedFile: string | null;
     commitMessage: string;
     isCommitting: boolean;
@@ -34,6 +42,9 @@ interface UIState {
     toggleRepoSidebar: () => void;
     toggleTerminal: () => void;
     setTerminalHeight: (height: number) => void;
+    addTerminal: () => void;
+    removeTerminal: (id: string) => void;
+    setActiveTerminal: (id: string) => void;
     setSelectedFile: (file: string | null) => void;
     setCommitMessage: (message: string) => void;
     setIsCommitting: (value: boolean) => void;
@@ -52,6 +63,8 @@ export const useUIStore = create<UIState>((set) => ({
     repoSidebarCollapsed: false,
     terminalExpanded: false,
     terminalHeight: 320,
+    terminals: [],
+    activeTerminalId: null,
     selectedFile: null,
     commitMessage: '',
     isCommitting: false,
@@ -104,4 +117,26 @@ export const useUIStore = create<UIState>((set) => ({
         setTimeout(() => set({ notification: null }), 4000);
     },
     clearNotification: () => set({ notification: null }),
+
+    addTerminal: () => set((state) => {
+        const id = `terminal-${Date.now()}`;
+        const title = `Terminal ${state.terminals.length + 1}`;
+        return {
+            terminals: [...state.terminals, { id, title, createdAt: Date.now() }],
+            activeTerminalId: id,
+            terminalExpanded: true,
+        };
+    }),
+
+    removeTerminal: (id) => set((state) => {
+        const filtered = state.terminals.filter((t) => t.id !== id);
+        const wasActive = state.activeTerminalId === id;
+        return {
+            terminals: filtered,
+            activeTerminalId: wasActive ? (filtered[0]?.id || null) : state.activeTerminalId,
+            terminalExpanded: filtered.length > 0 ? state.terminalExpanded : false,
+        };
+    }),
+
+    setActiveTerminal: (id) => set({ activeTerminalId: id }),
 }));

@@ -21,16 +21,41 @@ export function ChangesTab() {
     const unstagedFiles = fileStatuses.filter((f) => !f.staged);
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const isCommitting = useUIStore((s) => s.isCommitting);
+    const isSyncing = useUIStore((s) => s.isSyncing);
 
-    // Ensure textarea is always functional - fix for becoming unresponsive after undo
+    // Ensure textarea remains enabled and interactive
     useEffect(() => {
-        if (textareaRef.current) {
-            // Remove any disabled state that might have been set
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+
+        // Keep textarea enabled and interactive at all times
+        const ensureEnabled = () => {
+            if (textarea.disabled || textarea.readOnly) {
+                textarea.disabled = false;
+                textarea.readOnly = false;
+            }
+        };
+
+        ensureEnabled();
+
+        // Monitor for any changes to disabled/readOnly attributes
+        const observer = new MutationObserver(ensureEnabled);
+        observer.observe(textarea, {
+            attributes: true,
+            attributeFilter: ['disabled', 'readonly']
+        });
+
+        return () => observer.disconnect();
+    }, []);
+
+    // Re-enable after commit/sync operations complete
+    useEffect(() => {
+        if (!isCommitting && !isSyncing && textareaRef.current) {
             textareaRef.current.disabled = false;
-            // Ensure it can receive focus
-            textareaRef.current.style.pointerEvents = 'auto';
+            textareaRef.current.readOnly = false;
         }
-    }, [fileStatuses, stagedFiles.length]); // Re-run when file status changes (e.g., after undo)
+    }, [isCommitting, isSyncing]);
 
     const selectedFileStatus = useMemo(() =>
         fileStatuses.find(f => f.path === selectedFile),

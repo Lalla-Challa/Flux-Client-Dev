@@ -40,7 +40,8 @@ export class TerminalService {
             env,
         };
 
-        // On Windows, use winpty backend instead of ConPTY to avoid console attachment issues
+        // On Windows, try ConPTY first (better compatibility with xterm.js)
+        // Only force false if there are specific known issues, but for Windows 10/11 ConPTY is preferred.
         if (os.platform() === 'win32') {
             ptyOptions.useConpty = false;
         }

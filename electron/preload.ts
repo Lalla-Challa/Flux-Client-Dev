@@ -419,10 +419,14 @@ const electronAPI: ElectronAPI = {
         setContext: (id: string, context: { cwd: string; username?: string; displayName?: string; email?: string; token?: string }) => ipcRenderer.invoke('terminal:setContext', id, context),
         destroy: (id) => ipcRenderer.invoke('terminal:destroy', id),
         onData: (callback) => {
-            ipcRenderer.on('terminal:data', (_event, data) => callback(data));
+            const subscription = (_event: any, data: { id: string; data: string }) => callback(data);
+            ipcRenderer.on('terminal:data', subscription);
+            return () => ipcRenderer.removeListener('terminal:data', subscription);
         },
         onExit: (callback) => {
-            ipcRenderer.on('terminal:exit', (_event, data) => callback(data));
+            const subscription = (_event: any, data: { id: string; exitCode: number }) => callback(data);
+            ipcRenderer.on('terminal:exit', subscription);
+            return () => ipcRenderer.removeListener('terminal:exit', subscription);
         },
         removeDataListener: () => {
             ipcRenderer.removeAllListeners('terminal:data');

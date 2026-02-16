@@ -111,8 +111,8 @@ export interface ElectronAPI {
         resize: (id: string, cols: number, rows: number) => Promise<void>;
         setContext: (id: string, context: TerminalContext) => Promise<void>;
         destroy: (id: string) => Promise<void>;
-        onData: (callback: (data: { id: string; data: string }) => void) => void;
-        onExit: (callback: (data: { id: string; exitCode: number }) => void) => void;
+        onData: (callback: (data: { id: string; data: string }) => void) => () => void;
+        onExit: (callback: (data: { id: string; exitCode: number }) => void) => () => void;
         removeDataListener: () => void;
         removeExitListener: () => void;
     };

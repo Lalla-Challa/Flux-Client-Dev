@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AccountSidebar } from './components/layout/AccountSidebar';
 import { RepoSidebar } from './components/layout/RepoSidebar';
 import { MainView } from './components/layout/MainView';
-import { BottomTerminal } from './components/layout/BottomTerminal';
+import { MultiTerminal } from './components/layout/MultiTerminal';
 import { ActivityPanel } from './components/layout/ActivityPanel';
 import { ConflictPanel } from './components/conflicts/ConflictPanel';
 import { CommandPalette } from './components/common/CommandPalette';
@@ -319,7 +319,7 @@ export default function App() {
                         >
                             <div style={{ height: terminalHeight }} className="h-full">
                                 {bottomPanel === 'terminal' ? (
-                                    <BottomTerminal />
+                                    <MultiTerminal />
                                 ) : (
                                     <ActivityPanel />
                                 )}

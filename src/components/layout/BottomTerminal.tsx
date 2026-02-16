@@ -8,6 +8,7 @@ const TERMINAL_ID = 'main-terminal';
 
 export function BottomTerminal() {
     const terminalRef = useRef<HTMLDivElement>(null);
+    const cleanupRefs = useRef<(() => void)[]>([]);
     const xtermRef = useRef<any>(null);
     const fitAddonRef = useRef<any>(null);
     const resizeRef = useRef<HTMLDivElement>(null);
@@ -92,6 +93,39 @@ export function BottomTerminal() {
                     cursorStyle: 'block',
                     scrollback: 5000,
                     convertEol: true,
+                    allowProposedApi: true,
+                });
+
+                // Copy/Paste support
+                terminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+                    // Ctrl+C: copy if there's a selection, otherwise send SIGINT
+                    if (e.ctrlKey && e.key === 'c' && e.type === 'keydown') {
+                        const selection = terminal.getSelection();
+                        if (selection) {
+                            navigator.clipboard.writeText(selection);
+                            terminal.clearSelection();
+                            return false;
+                        }
+                    }
+                    // Ctrl+V: paste from clipboard
+                    if (e.ctrlKey && e.key === 'v' && e.type === 'keydown') {
+                        navigator.clipboard.readText().then((text) => {
+                            if (text && ptyReady.current) {
+                                window.electronAPI?.terminal.write(TERMINAL_ID, text);
+                            }
+                        });
+                        return false;
+                    }
+                    // Ctrl+Shift+C: always copy
+                    if (e.ctrlKey && e.shiftKey && e.key === 'C' && e.type === 'keydown') {
+                        const selection = terminal.getSelection();
+                        if (selection) {
+                            navigator.clipboard.writeText(selection);
+                            terminal.clearSelection();
+                        }
+                        return false;
+                    }
+                    return true;
                 });
 
                 const fitAddon = new FitAddon();
@@ -107,15 +141,18 @@ export function BottomTerminal() {
 
                 // Register PTY output listener BEFORE creating PTY
                 // so we capture the initial shell prompt.
+                // Register PTY output listener BEFORE creating PTY
+                // so we capture the initial shell prompt.
                 const api = window.electronAPI.terminal;
 
-                api.onData((msg: { id: string; data: string }) => {
+                const cleanupData = api.onData((msg: { id: string; data: string }) => {
                     if (msg.id === TERMINAL_ID && xtermRef.current) {
                         xtermRef.current.write(msg.data);
                     }
                 });
+                cleanupRefs.current.push(cleanupData);
 
-                api.onExit((msg: { id: string; exitCode: number }) => {
+                const cleanupExit = api.onExit((msg: { id: string; exitCode: number }) => {
                     if (msg.id === TERMINAL_ID && xtermRef.current) {
                         xtermRef.current.writeln('');
                         xtermRef.current.writeln(
@@ -123,6 +160,7 @@ export function BottomTerminal() {
                         );
                     }
                 });
+                cleanupRefs.current.push(cleanupExit);
 
                 // Build context from current app state
                 const repoState = useRepoStore.getState();
@@ -186,8 +224,10 @@ export function BottomTerminal() {
             ptyReady.current = false;
             const api = window.electronAPI?.terminal;
             if (api) {
-                api.removeDataListener();
-                api.removeExitListener();
+                // api.removeDataListener(); // Deprecated
+                // api.removeExitListener(); // Deprecated
+                cleanupRefs.current.forEach(fn => fn());
+                cleanupRefs.current = [];
                 api.destroy(TERMINAL_ID);
             }
             xtermRef.current?.dispose();
