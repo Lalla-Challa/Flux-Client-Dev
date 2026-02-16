@@ -11,6 +11,8 @@ import { app } from 'electron';
 export interface Account {
     id: string;
     username: string;
+    displayName: string;
+    email: string;
     avatarUrl: string;
     label: string;
     type: 'personal' | 'work' | 'client';
@@ -223,9 +225,21 @@ export class AuthService {
 
         const userProfile = await this.fetchUserProfile(accessToken);
 
+        // Resolve email: profile email may be null if set to private
+        let email = userProfile.email || '';
+        if (!email) {
+            try {
+                email = await this.fetchPrimaryEmail(accessToken);
+            } catch {
+                // Non-critical: email stays empty
+            }
+        }
+
         const account: StoredAccount = {
             id: userProfile.id.toString(),
             username: userProfile.login,
+            displayName: userProfile.name || userProfile.login,
+            email,
             avatarUrl: userProfile.avatar_url,
             label: userProfile.login,
             type: 'personal',
@@ -239,7 +253,12 @@ export class AuthService {
 
     async getAccounts(): Promise<Account[]> {
         const accounts = this.store.get<StoredAccount[]>('accounts', []);
-        return accounts.map(({ token, ...account }) => account);
+        return accounts.map(({ token, ...account }) => ({
+            ...account,
+            // Backfill for accounts stored before displayName/email were added
+            displayName: account.displayName || account.username,
+            email: account.email || '',
+        }));
     }
 
     async getToken(username: string): Promise<string | null> {
@@ -371,6 +390,45 @@ export class AuthService {
                         resolve(JSON.parse(data));
                     } catch {
                         reject(new Error('Failed to parse user profile'));
+                    }
+                });
+            });
+
+            req.on('error', reject);
+            req.end();
+        });
+    }
+
+    /**
+     * Fetches the user's primary verified email from /user/emails.
+     * Used as fallback when the profile email is null (private).
+     */
+    private fetchPrimaryEmail(token: string): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const options = {
+                hostname: 'api.github.com',
+                port: 443,
+                path: '/user/emails',
+                method: 'GET',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/vnd.github.v3+json',
+                    'User-Agent': 'GitFlow-Desktop',
+                },
+            };
+
+            const req = https.request(options, (res) => {
+                let data = '';
+                res.on('data', (chunk) => {
+                    data += chunk;
+                });
+                res.on('end', () => {
+                    try {
+                        const emails: { email: string; primary: boolean; verified: boolean }[] = JSON.parse(data);
+                        const primary = emails.find((e) => e.primary && e.verified);
+                        resolve(primary?.email || emails[0]?.email || '');
+                    } catch {
+                        reject(new Error('Failed to parse user emails'));
                     }
                 });
             });

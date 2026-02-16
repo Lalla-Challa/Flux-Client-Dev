@@ -100,9 +100,23 @@ function cleanupAskPassScript(scriptPath: string): void {
 export class GitService {
     private mainWindow: BrowserWindow | null = null;
     private commandCounter = 0;
+    private activeIdentity: { name: string; email: string } | null = null;
 
     setWindow(win: BrowserWindow): void {
         this.mainWindow = win;
+    }
+
+    /**
+     * Sets the active git identity used for all git operations.
+     * This ensures commits from the app use the same name/email
+     * as the integrated terminal.
+     */
+    setActiveIdentity(name: string, email: string): void {
+        this.activeIdentity = { name, email };
+    }
+
+    clearActiveIdentity(): void {
+        this.activeIdentity = null;
     }
 
     private sanitizeArgs(args: string[], token?: string): string[] {
@@ -191,12 +205,33 @@ export class GitService {
             GIT_TERMINAL_PROMPT: '0',
         };
 
+        // Inject active account identity so commits use the same
+        // name/email as the integrated terminal
+        if (this.activeIdentity) {
+            if (this.activeIdentity.name) {
+                env.GIT_AUTHOR_NAME = this.activeIdentity.name;
+                env.GIT_COMMITTER_NAME = this.activeIdentity.name;
+            }
+            if (this.activeIdentity.email) {
+                env.GIT_AUTHOR_EMAIL = this.activeIdentity.email;
+                env.GIT_COMMITTER_EMAIL = this.activeIdentity.email;
+            }
+        }
+
         // If a token is provided, create a GIT_ASKPASS helper
         if (token) {
             askPassScript = createAskPassScript(token);
             env.GIT_ASKPASS = askPassScript;
-            // Also set for HTTPS basic auth
             env.GIT_CONFIG_NOSYSTEM = '1';
+
+            // Override credential.helper to empty so Git doesn't use
+            // Windows Credential Manager or any other stored credentials.
+            // Git checks credential helpers BEFORE GIT_ASKPASS, so without
+            // this override, cached credentials from another account would
+            // take priority over the app's token.
+            env.GIT_CONFIG_COUNT = '1';
+            env.GIT_CONFIG_KEY_0 = 'credential.helper';
+            env.GIT_CONFIG_VALUE_0 = '';
         }
 
         const options: ExecFileOptions = {
@@ -785,11 +820,27 @@ export class GitService {
             GIT_TERMINAL_PROMPT: '0',
         };
 
+        // Inject active identity for consistency with terminal
+        if (this.activeIdentity) {
+            if (this.activeIdentity.name) {
+                env.GIT_AUTHOR_NAME = this.activeIdentity.name;
+                env.GIT_COMMITTER_NAME = this.activeIdentity.name;
+            }
+            if (this.activeIdentity.email) {
+                env.GIT_AUTHOR_EMAIL = this.activeIdentity.email;
+                env.GIT_COMMITTER_EMAIL = this.activeIdentity.email;
+            }
+        }
+
         let askPassScript: string | undefined;
         if (token) {
             askPassScript = createAskPassScript(token);
             env.GIT_ASKPASS = askPassScript;
             env.GIT_CONFIG_NOSYSTEM = '1';
+            // Disable credential helpers so they don't override our token
+            env.GIT_CONFIG_COUNT = '1';
+            env.GIT_CONFIG_KEY_0 = 'credential.helper';
+            env.GIT_CONFIG_VALUE_0 = '';
         }
 
         const options: ExecFileOptions = {

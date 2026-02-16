@@ -1,9 +1,16 @@
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const dotenv = require('dotenv');
 import * as path from 'path';
 
-// Load .env from project root
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
+// Load .env only in development
+if (process.env.NODE_ENV !== 'production') {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const dotenv = require('dotenv');
+        dotenv.config({ path: path.join(__dirname, '..', '.env') });
+    } catch (e) {
+        // dotenv not available, skip
+    }
+}
+
 
 import { app, BrowserWindow, ipcMain, protocol, shell } from 'electron';
 import { GitService } from './services/git.service';
@@ -21,9 +28,10 @@ const githubService = new GitHubService();
 const updaterService = new UpdaterService();
 const terminalService = new TerminalService();
 
-const isDev = process.env.NODE_ENV !== 'production' || !app.isPackaged;
+const isDev = !app.isPackaged;
 
 function createWindow(): void {
+    logStartup('Creating window...');
     mainWindow = new BrowserWindow({
         width: 1400,
         height: 900,
@@ -44,21 +52,36 @@ function createWindow(): void {
             contextIsolation: true,
             sandbox: false,
         },
-        show: false,
+        show: true, // Show immediately for debugging startup hangs
     });
 
-    mainWindow.once('ready-to-show', () => {
-        mainWindow?.show();
+    logStartup('Window object created');
+
+    // mainWindow.once('ready-to-show', () => {
+    //     mainWindow?.show();
+    // });
+
+    mainWindow.webContents.on('did-finish-load', () => {
+        logStartup('Window: did-finish-load');
+    });
+
+    mainWindow.webContents.on('crashed', (e) => {
+        logStartup('Window: renderer process crashed');
     });
 
     if (isDev) {
         mainWindow.loadURL('http://localhost:5173');
         mainWindow.webContents.openDevTools({ mode: 'detach' });
     } else {
-        mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+        const indexHtml = path.join(__dirname, '../dist/index.html');
+        logStartup(`Loading file: ${indexHtml}`);
+        mainWindow.loadFile(indexHtml).catch((e) => {
+            logStartup(`Failed to load index.html: ${e.message}`);
+        });
     }
 
     mainWindow.on('closed', () => {
+        logStartup('Window closed');
         mainWindow = null;
     });
 }
@@ -74,15 +97,33 @@ if (process.defaultApp) {
     app.setAsDefaultProtocolClient('gitflow');
 }
 
+// simple logging for startup debugging
+function logStartup(msg: string) {
+    try {
+        const fs = require('fs');
+        const logPath = path.join(app.getPath('userData'), 'startup.log');
+        fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${msg}\n`);
+    } catch (e) {
+        // ignore
+    }
+}
+
 const gotTheLock = app.requestSingleInstanceLock();
+logStartup(`Acquired lock: ${gotTheLock}`);
 
 if (!gotTheLock) {
+    logStartup('Quitting because lock was not acquired');
     app.quit();
 } else {
     app.on('second-instance', (_event, commandLine) => {
+        logStartup('Second instance detected');
         if (mainWindow) {
             if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.focus();
+        } else {
+            // Process exists but no window (zombie or just background), create one!
+            logStartup('No window found for existing process, creating new one');
+            createWindow();
         }
         // Handle OAuth callback from protocol
         const url = commandLine.find((arg) => arg.startsWith('gitflow://'));
@@ -91,6 +132,7 @@ if (!gotTheLock) {
         }
     });
 }
+
 
 async function handleOAuthCallback(url: string): Promise<void> {
     try {
@@ -449,6 +491,14 @@ function registerIpcHandlers(): void {
         return gitService.reflog(repoPath, limit);
     });
 
+    // ── Git Identity (sync with terminal) ──
+    ipcMain.handle('git:setIdentity', async (_event, name: string, email: string) => {
+        gitService.setActiveIdentity(name, email);
+    });
+    ipcMain.handle('git:clearIdentity', async () => {
+        gitService.clearActiveIdentity();
+    });
+
     ipcMain.handle('git:clone', async (_event, url: string, destination: string, token?: string) => {
         return gitService.clone(url, destination, token, (progress) => {
             mainWindow?.webContents.send('git:cloneProgress', progress);
@@ -476,7 +526,7 @@ function registerIpcHandlers(): void {
     });
 
     // ── Terminal ──
-    ipcMain.handle('terminal:create', async (_event, id: string, context: { cwd: string; username?: string; token?: string }) => {
+    ipcMain.handle('terminal:create', async (_event, id: string, context: { cwd: string; username?: string; displayName?: string; email?: string; token?: string }) => {
         return terminalService.createTerminal(id, context);
     });
     ipcMain.handle('terminal:write', async (_event, id: string, data: string) => {
@@ -485,7 +535,7 @@ function registerIpcHandlers(): void {
     ipcMain.handle('terminal:resize', async (_event, id: string, cols: number, rows: number) => {
         terminalService.resizeTerminal(id, cols, rows);
     });
-    ipcMain.handle('terminal:setContext', async (_event, id: string, context: { cwd: string; username?: string; token?: string }) => {
+    ipcMain.handle('terminal:setContext', async (_event, id: string, context: { cwd: string; username?: string; displayName?: string; email?: string; token?: string }) => {
         terminalService.setTerminalContext(id, context);
     });
     ipcMain.handle('terminal:destroy', async (_event, id: string) => {
@@ -574,6 +624,10 @@ app.on('window-all-closed', () => {
     terminalService.destroyAll();
     if (process.platform !== 'darwin') {
         app.quit();
+        // Safety net: Force exit if quit hangs (common on Windows with background tasks)
+        setTimeout(() => {
+            app.exit(0);
+        }, 5000);
     }
 });
 

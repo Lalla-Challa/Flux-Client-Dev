@@ -2,6 +2,7 @@ import { commandRegistry } from './command-registry';
 import { useUIStore } from '../stores/ui.store';
 import { useRepoStore } from '../stores/repo.store';
 import { useAccountStore } from '../stores/account.store';
+import { useCommandPaletteStore } from '../stores/command-palette.store';
 
 function getToken(): Promise<string | null> {
     const acc = useAccountStore.getState();
@@ -14,14 +15,14 @@ export function registerDefaultCommands() {
     const cmds = [
         // ── Navigation ──
         { id: 'nav:changes', label: 'Go to Changes', category: 'navigation', shortcut: 'Ctrl+1', keywords: ['stage', 'diff'], handler: () => useUIStore.getState().setActiveTab('changes') },
-        { id: 'nav:files', label: 'Go to Files', category: 'navigation', shortcut: 'Ctrl+8', keywords: ['browse', 'explorer'], handler: () => useUIStore.getState().setActiveTab('files') },
-        { id: 'nav:history', label: 'Go to History', category: 'navigation', shortcut: 'Ctrl+2', keywords: ['log', 'commits'], handler: () => useUIStore.getState().setActiveTab('history') },
-        { id: 'nav:branches', label: 'Go to Branches', category: 'navigation', shortcut: 'Ctrl+3', keywords: ['branch', 'checkout'], handler: () => useUIStore.getState().setActiveTab('branches') },
-        { id: 'nav:cloud', label: 'Go to Cloud', category: 'navigation', shortcut: 'Ctrl+4', keywords: ['github', 'repos'], handler: () => useUIStore.getState().setActiveTab('cloud') },
-        { id: 'nav:prs', label: 'Go to Pull Requests', category: 'navigation', shortcut: 'Ctrl+5', keywords: ['pr', 'merge'], handler: () => useUIStore.getState().setActiveTab('pull-requests') },
-        { id: 'nav:actions', label: 'Go to Actions', category: 'navigation', shortcut: 'Ctrl+6', keywords: ['workflow', 'ci'], handler: () => useUIStore.getState().setActiveTab('actions') },
-        { id: 'nav:issues', label: 'Go to Issues', category: 'navigation', shortcut: 'Ctrl+7', keywords: ['bug', 'task'], handler: () => useUIStore.getState().setActiveTab('issues') },
-        { id: 'nav:settings', label: 'Go to Settings', category: 'navigation', shortcut: 'Ctrl+,', keywords: ['config', 'preferences'], handler: () => useUIStore.getState().setActiveTab('settings') },
+        { id: 'nav:files', label: 'Go to Files', category: 'navigation', shortcut: 'Ctrl+2', keywords: ['browse', 'explorer'], handler: () => useUIStore.getState().setActiveTab('files') },
+        { id: 'nav:history', label: 'Go to History', category: 'navigation', shortcut: 'Ctrl+3', keywords: ['log', 'commits'], handler: () => useUIStore.getState().setActiveTab('history') },
+        { id: 'nav:branches', label: 'Go to Branches', category: 'navigation', shortcut: 'Ctrl+4', keywords: ['branch', 'checkout'], handler: () => useUIStore.getState().setActiveTab('branches') },
+        { id: 'nav:cloud', label: 'Go to Cloud', category: 'navigation', shortcut: 'Ctrl+5', keywords: ['github', 'repos'], handler: () => useUIStore.getState().setActiveTab('cloud') },
+        { id: 'nav:settings', label: 'Go to Settings', category: 'navigation', shortcut: 'Ctrl+6', keywords: ['config', 'preferences'], handler: () => useUIStore.getState().setActiveTab('settings') },
+        { id: 'nav:prs', label: 'Go to Pull Requests', category: 'navigation', shortcut: 'Ctrl+7', keywords: ['pr', 'merge'], handler: () => useUIStore.getState().setActiveTab('pull-requests') },
+        { id: 'nav:actions', label: 'Go to Actions', category: 'navigation', shortcut: 'Ctrl+8', keywords: ['workflow', 'ci'], handler: () => useUIStore.getState().setActiveTab('actions') },
+        { id: 'nav:issues', label: 'Go to Issues', category: 'navigation', shortcut: 'Ctrl+9', keywords: ['bug', 'task'], handler: () => useUIStore.getState().setActiveTab('issues') },
 
         // ── Git ──
         {
@@ -93,10 +94,21 @@ export function registerDefaultCommands() {
         // ── View ──
         { id: 'view:toggle-terminal', label: 'Toggle Terminal', category: 'view', shortcut: 'Ctrl+J', keywords: ['console', 'shell'], handler: () => useUIStore.getState().toggleTerminal() },
         {
-            id: 'view:activity-log', label: 'Show Activity Log', category: 'view', keywords: ['commands', 'log'],
+            id: 'view:activity-log', label: 'Show Activity Log', category: 'view', shortcut: 'Ctrl+Shift+A', keywords: ['commands', 'log'],
             handler: () => {
-                useUIStore.getState().setBottomPanel('activity');
-                if (!useUIStore.getState().terminalExpanded) useUIStore.getState().toggleTerminal();
+                const ui = useUIStore.getState();
+                if (ui.bottomPanel === 'activity' && ui.terminalExpanded) {
+                    ui.toggleTerminal(); // Close it
+                } else {
+                    ui.setBottomPanel('activity');
+                    if (!ui.terminalExpanded) ui.toggleTerminal(); // Open it
+                }
+            },
+        },
+        {
+            id: 'tools:macro-editor', label: 'Open Macro Editor', category: 'tools', shortcut: 'Ctrl+Shift+M', keywords: ['macro', 'automation'],
+            handler: () => {
+                useCommandPaletteStore.getState().openMacroEditor();
             },
         },
         {

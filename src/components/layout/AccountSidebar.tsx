@@ -60,7 +60,7 @@ export function AccountSidebar() {
         <div className="flex flex-col items-center w-[60px] bg-surface-1 border-r border-border py-3 gap-3 shrink-0">
             {/* Logo */}
             <div className="w-10 h-10 mb-2 flex items-center justify-center">
-                <img src="/logo.png" className="w-full h-full object-contain filter drop-shadow-lg" alt="Flux" />
+                <img src="logo.png" className="w-full h-full object-contain filter drop-shadow-lg" alt="Flux" />
             </div>
 
             {/* Divider */}

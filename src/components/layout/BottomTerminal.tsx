@@ -129,10 +129,12 @@ export function BottomTerminal() {
                 const accState = useAccountStore.getState();
                 const acc = accState.accounts.find((a) => a.id === accState.activeAccountId);
 
-                // Spawn PTY
+                // Spawn PTY with full identity context
                 const ptyResult = await api.create(TERMINAL_ID, {
                     cwd: repoState.activeRepoPath || '',
                     username: acc?.username,
+                    displayName: acc?.displayName,
+                    email: acc?.email,
                     token: acc?.token,
                 });
 
@@ -223,9 +225,11 @@ export function BottomTerminal() {
         api.setContext(TERMINAL_ID, {
             cwd: activeRepoPath || '',
             username: activeAccount?.username,
+            displayName: activeAccount?.displayName,
+            email: activeAccount?.email,
             token: activeAccount?.token,
         });
-    }, [activeRepoPath, activeAccount?.username, activeAccount?.token, isReady]);
+    }, [activeRepoPath, activeAccount?.username, activeAccount?.displayName, activeAccount?.email, activeAccount?.token, isReady]);
 
     // ── Resize drag ──
     useEffect(() => {

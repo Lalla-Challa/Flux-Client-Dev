@@ -138,7 +138,7 @@ export function MainView() {
         <div className="flex flex-col h-full bg-surface-0">
             <div className="h-11 flex items-center px-4 bg-surface-1 border-b border-border titlebar-drag select-none shrink-0">
                 <div className="flex items-center gap-2 mr-6">
-                    <img src="/logo.png" className="w-5 h-5 object-contain" alt="Logo" />
+                    <img src="logo.png" className="w-5 h-5 object-contain" alt="Logo" />
                     <span className="font-bold text-brand-500 text-sm tracking-tight">Flux Client</span>
                 </div>
 
@@ -277,7 +277,7 @@ function EmptyState({ onNewRepo }: { onNewRepo: () => void }) {
                 className="flex flex-col items-center max-w-md"
             >
                 <div className="w-20 h-20 mb-6 flex items-center justify-center">
-                    <img src="/logo.png" className="w-full h-full object-contain filter drop-shadow-2xl" alt="Flux Client" />
+                    <img src="logo.png" className="w-full h-full object-contain filter drop-shadow-2xl" alt="Flux Client" />
                 </div>
 
                 <h2 className="text-xl font-semibold text-text-primary mb-1">Welcome to Flux Client</h2>

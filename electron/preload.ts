@@ -98,6 +98,8 @@ export interface ElectronAPI {
         squashCommits: (repoPath: string, count: number, message: string) => Promise<void>;
         rewordCommit: (repoPath: string, newMessage: string) => Promise<void>;
         reflog: (repoPath: string, limit?: number) => Promise<any[]>;
+        setIdentity: (name: string, email: string) => Promise<void>;
+        clearIdentity: () => Promise<void>;
     };
 
     // Dialog
@@ -142,10 +144,10 @@ export interface ElectronAPI {
 
     // Terminal
     terminal: {
-        create: (id: string, context: { cwd: string; username?: string; token?: string }) => Promise<{ cols: number; rows: number }>;
+        create: (id: string, context: { cwd: string; username?: string; displayName?: string; email?: string; token?: string }) => Promise<{ cols: number; rows: number }>;
         write: (id: string, data: string) => Promise<void>;
         resize: (id: string, cols: number, rows: number) => Promise<void>;
-        setContext: (id: string, context: { cwd: string; username?: string; token?: string }) => Promise<void>;
+        setContext: (id: string, context: { cwd: string; username?: string; displayName?: string; email?: string; token?: string }) => Promise<void>;
         destroy: (id: string) => Promise<void>;
         onData: (callback: (data: { id: string; data: string }) => void) => void;
         onExit: (callback: (data: { id: string; exitCode: number }) => void) => void;
@@ -157,6 +159,8 @@ export interface ElectronAPI {
 export interface Account {
     id: string;
     username: string;
+    displayName: string;
+    email: string;
     avatarUrl: string;
     label: string;
     type: 'personal' | 'work' | 'client';
@@ -359,6 +363,8 @@ const electronAPI: ElectronAPI = {
         squashCommits: (repoPath: string, count: number, message: string) => ipcRenderer.invoke('git:squashCommits', repoPath, count, message),
         rewordCommit: (repoPath: string, newMessage: string) => ipcRenderer.invoke('git:rewordCommit', repoPath, newMessage),
         reflog: (repoPath: string, limit?: number) => ipcRenderer.invoke('git:reflog', repoPath, limit),
+        setIdentity: (name: string, email: string) => ipcRenderer.invoke('git:setIdentity', name, email),
+        clearIdentity: () => ipcRenderer.invoke('git:clearIdentity'),
     },
 
     dialog: {
@@ -407,10 +413,10 @@ const electronAPI: ElectronAPI = {
     },
 
     terminal: {
-        create: (id, context) => ipcRenderer.invoke('terminal:create', id, context),
+        create: (id: string, context: { cwd: string; username?: string; displayName?: string; email?: string; token?: string }) => ipcRenderer.invoke('terminal:create', id, context),
         write: (id, data) => ipcRenderer.invoke('terminal:write', id, data),
         resize: (id, cols, rows) => ipcRenderer.invoke('terminal:resize', id, cols, rows),
-        setContext: (id, context) => ipcRenderer.invoke('terminal:setContext', id, context),
+        setContext: (id: string, context: { cwd: string; username?: string; displayName?: string; email?: string; token?: string }) => ipcRenderer.invoke('terminal:setContext', id, context),
         destroy: (id) => ipcRenderer.invoke('terminal:destroy', id),
         onData: (callback) => {
             ipcRenderer.on('terminal:data', (_event, data) => callback(data));

@@ -28,6 +28,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Setup production environment
+        run: |
+          echo "GITHUB_CLIENT_ID=${{ secrets.GITHUB_CLIENT_ID }}" > .env.production.local
+          echo "GITHUB_CLIENT_SECRET=${{ secrets.GITHUB_CLIENT_SECRET }}" >> .env.production.local
+        shell: bash
+
       - name: Build app
         run: npm run build
 
@@ -62,6 +68,11 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Setup production environment
+        run: |
+          echo "GITHUB_CLIENT_ID=${{ secrets.GITHUB_CLIENT_ID }}" > .env.production.local
+          echo "GITHUB_CLIENT_SECRET=${{ secrets.GITHUB_CLIENT_SECRET }}" >> .env.production.local
 
       - name: Build app
         run: npm run build

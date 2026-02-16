@@ -34,6 +34,25 @@ export default function App() {
         useCommandPaletteStore.getState().loadMacros();
     }, [loadAccounts, loadSavedRepos]);
 
+    // ── Sync active account identity to GitService ──
+    const activeAccountId = useAccountStore((s) => s.activeAccountId);
+    const accounts = useAccountStore((s) => s.accounts);
+    const activeAccount = accounts.find((a) => a.id === activeAccountId);
+
+    useEffect(() => {
+        const api = (window as any).electronAPI;
+        if (!api?.git) return;
+
+        if (activeAccount?.displayName || activeAccount?.email) {
+            api.git.setIdentity(
+                activeAccount.displayName || activeAccount.username,
+                activeAccount.email || ''
+            );
+        } else {
+            api.git.clearIdentity();
+        }
+    }, [activeAccount?.displayName, activeAccount?.email, activeAccount?.username]);
+
     // ── Activity log IPC listeners ──
     useEffect(() => {
         const api = (window as any).electronAPI;
@@ -122,8 +141,9 @@ export default function App() {
             // ── Tab navigation (Ctrl+1‑8, Ctrl+,) ──
 
             const tabMap: Record<string, Parameters<typeof ui.setActiveTab>[0]> = {
-                '1': 'changes', '2': 'history', '3': 'branches', '4': 'cloud',
-                '5': 'pull-requests', '6': 'actions', '7': 'issues', '8': 'files',
+                '1': 'changes', '2': 'files', '3': 'history', '4': 'branches',
+                '5': 'cloud', '6': 'settings', '7': 'pull-requests', '8': 'actions',
+                '9': 'issues',
             };
 
             if (!isShift && tabMap[key]) {
@@ -143,6 +163,25 @@ export default function App() {
             if (isShift && key === 'n') {
                 e.preventDefault();
                 ui.setShowNewRepoModal(true);
+                return;
+            }
+
+            // Ctrl+Shift+A → Toggle Activity Log
+            if (isShift && key === 'a') {
+                e.preventDefault();
+                if (ui.bottomPanel === 'activity' && ui.terminalExpanded) {
+                    ui.toggleTerminal(); // Close
+                } else {
+                    ui.setBottomPanel('activity');
+                    if (!ui.terminalExpanded) ui.toggleTerminal(); // Open
+                }
+                return;
+            }
+
+            // Ctrl+Shift+M → Macro Editor
+            if (isShift && key === 'm') {
+                e.preventDefault();
+                useCommandPaletteStore.getState().openMacroEditor();
                 return;
             }
 
@@ -275,9 +314,8 @@ export default function App() {
                         <motion.div
                             animate={{ height: terminalExpanded ? terminalHeight : 0 }}
                             transition={{ duration: 0.2, ease: 'easeInOut' }}
-                            className={`border-t border-border overflow-hidden shrink-0 ${
-                                !terminalExpanded ? 'border-t-0' : ''
-                            }`}
+                            className={`border-t border-border overflow-hidden shrink-0 ${!terminalExpanded ? 'border-t-0' : ''
+                                }`}
                         >
                             <div style={{ height: terminalHeight }} className="h-full">
                                 {bottomPanel === 'terminal' ? (
@@ -307,11 +345,10 @@ export default function App() {
                                         useUIStore.getState().setBottomPanel('terminal');
                                         if (!terminalExpanded) useUIStore.getState().toggleTerminal();
                                     }}
-                                    className={`text-xs font-mono px-2 py-0.5 rounded transition-colors ${
-                                        bottomPanel === 'terminal'
-                                            ? 'text-text-primary bg-surface-2'
-                                            : 'text-text-tertiary hover:text-text-secondary'
-                                    }`}
+                                    className={`text-xs font-mono px-2 py-0.5 rounded transition-colors ${bottomPanel === 'terminal'
+                                        ? 'text-text-primary bg-surface-2'
+                                        : 'text-text-tertiary hover:text-text-secondary'
+                                        }`}
                                 >
                                     Terminal
                                 </button>
@@ -320,11 +357,10 @@ export default function App() {
                                         useUIStore.getState().setBottomPanel('activity');
                                         if (!terminalExpanded) useUIStore.getState().toggleTerminal();
                                     }}
-                                    className={`text-xs font-mono px-2 py-0.5 rounded transition-colors ${
-                                        bottomPanel === 'activity'
-                                            ? 'text-text-primary bg-surface-2'
-                                            : 'text-text-tertiary hover:text-text-secondary'
-                                    }`}
+                                    className={`text-xs font-mono px-2 py-0.5 rounded transition-colors ${bottomPanel === 'activity'
+                                        ? 'text-text-primary bg-surface-2'
+                                        : 'text-text-tertiary hover:text-text-secondary'
+                                        }`}
                                 >
                                     Activity Log
                                 </button>

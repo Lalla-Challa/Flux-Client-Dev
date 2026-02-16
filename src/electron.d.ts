@@ -78,6 +78,8 @@ export interface ElectronAPI {
         squashCommits: (repoPath: string, count: number, message: string) => Promise<void>;
         rewordCommit: (repoPath: string, newMessage: string) => Promise<void>;
         reflog: (repoPath: string, limit?: number) => Promise<ReflogEntry[]>;
+        setIdentity: (name: string, email: string) => Promise<void>;
+        clearIdentity: () => Promise<void>;
     };
     dialog: {
         openDirectory: () => Promise<string | null>;
@@ -127,6 +129,8 @@ export interface UpdateStatus {
 export interface TerminalContext {
     cwd: string;
     username?: string;
+    displayName?: string;
+    email?: string;
     token?: string;
 }
 

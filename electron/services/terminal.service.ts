@@ -2,11 +2,13 @@ import * as pty from 'node-pty';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, app } from 'electron';
 
 export interface TerminalContext {
     cwd: string;
     username?: string;
+    displayName?: string;
+    email?: string;
     token?: string;
 }
 
@@ -88,10 +90,9 @@ export class TerminalService {
         const prevContext = this.contexts.get(id);
         this.contexts.set(id, context);
 
-        const { cwd, username, token } = context;
+        const { cwd, username, displayName, email, token } = context;
         const isWindows = os.platform() === 'win32';
         const shell = this.detectShell().shell;
-        const isGitBash = shell.includes('bash');
         const isPowerShell = shell.includes('powershell') || shell.includes('pwsh');
 
         // Change directory only if it actually changed
@@ -112,16 +113,36 @@ export class TerminalService {
             }
         }
 
-        // Update git credentials silently if they changed
-        if (username && token && (username !== prevContext?.username || token !== prevContext?.token)) {
+        // Check if identity or credentials changed
+        const identityChanged =
+            username !== prevContext?.username ||
+            displayName !== prevContext?.displayName ||
+            email !== prevContext?.email ||
+            token !== prevContext?.token;
+
+        if (identityChanged && (username || token)) {
+            const authorName = displayName || username || '';
+
             if (isPowerShell) {
-                terminal.write(`$env:GITHUB_TOKEN="${token}"\r`);
-                terminal.write(`$env:GIT_AUTHOR_NAME="${username}"\r`);
-                terminal.write(`$env:GIT_COMMITTER_NAME="${username}"\r`);
+                if (token) terminal.write(`$env:GITHUB_TOKEN="${token}"\r`);
+                if (authorName) {
+                    terminal.write(`$env:GIT_AUTHOR_NAME="${authorName}"\r`);
+                    terminal.write(`$env:GIT_COMMITTER_NAME="${authorName}"\r`);
+                }
+                if (email) {
+                    terminal.write(`$env:GIT_AUTHOR_EMAIL="${email}"\r`);
+                    terminal.write(`$env:GIT_COMMITTER_EMAIL="${email}"\r`);
+                }
             } else {
-                terminal.write(`export GITHUB_TOKEN="${token}"\r`);
-                terminal.write(`export GIT_AUTHOR_NAME="${username}"\r`);
-                terminal.write(`export GIT_COMMITTER_NAME="${username}"\r`);
+                if (token) terminal.write(`export GITHUB_TOKEN="${token}"\r`);
+                if (authorName) {
+                    terminal.write(`export GIT_AUTHOR_NAME="${authorName}"\r`);
+                    terminal.write(`export GIT_COMMITTER_NAME="${authorName}"\r`);
+                }
+                if (email) {
+                    terminal.write(`export GIT_AUTHOR_EMAIL="${email}"\r`);
+                    terminal.write(`export GIT_COMMITTER_EMAIL="${email}"\r`);
+                }
             }
 
             // Clear so credential update commands aren't visible
@@ -189,15 +210,42 @@ export class TerminalService {
     private buildEnvironment(context: TerminalContext): NodeJS.ProcessEnv {
         const env = { ...process.env };
 
-        // Set git credentials if provided
-        if (context.username) {
-            env.GIT_AUTHOR_NAME = context.username;
-            env.GIT_COMMITTER_NAME = context.username;
+        // Set git identity — use displayName (full name) for author/committer,
+        // falling back to username if displayName is not available
+        const authorName = context.displayName || context.username;
+        if (authorName) {
+            env.GIT_AUTHOR_NAME = authorName;
+            env.GIT_COMMITTER_NAME = authorName;
+        }
+
+        if (context.email) {
+            env.GIT_AUTHOR_EMAIL = context.email;
+            env.GIT_COMMITTER_EMAIL = context.email;
         }
 
         if (context.token) {
-            env.GITHUB_TOKEN = context.token;
+            env.GITHUB_TOKEN = context.token; // Keep for gh CLI
+            env.FLUX_GITHUB_TOKEN = context.token; // For our askpass script
             env.GIT_TERMINAL_PROMPT = '0';
+
+            // Determine path to askpass script
+            const scriptName = os.platform() === 'win32' ? 'askpass.bat' : 'askpass.sh';
+            let resourcesPath: string;
+
+            if (app.isPackaged) {
+                resourcesPath = path.join(process.resourcesPath, scriptName);
+            } else {
+                // In dev: project root / resources
+                resourcesPath = path.join(process.cwd(), 'resources', scriptName);
+            }
+
+            env.GIT_ASKPASS = resourcesPath;
+
+            // Disable credential helpers (Windows Credential Manager, git-credential-store, etc.)
+            // so they don't override the app's token with cached credentials from another account.
+            env.GIT_CONFIG_COUNT = '1';
+            env.GIT_CONFIG_KEY_0 = 'credential.helper';
+            env.GIT_CONFIG_VALUE_0 = '';
         }
 
         // Set terminal type
