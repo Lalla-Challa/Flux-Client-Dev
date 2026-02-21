@@ -19,6 +19,7 @@ import { RepoScannerService } from './services/repo-scanner.service';
 import { GitHubService } from './services/github.service';
 import { UpdaterService } from './services/updater.service';
 import { TerminalService } from './services/terminal.service';
+import { AgentService } from './services/agent.service';
 
 let mainWindow: BrowserWindow | null = null;
 const gitService = new GitService();
@@ -27,6 +28,7 @@ const repoScanner = new RepoScannerService(gitService);
 const githubService = new GitHubService();
 const updaterService = new UpdaterService();
 const terminalService = new TerminalService();
+const agentService = new AgentService(gitService);
 
 const isDev = !app.isPackaged;
 
@@ -569,6 +571,40 @@ function registerIpcHandlers(): void {
         return fs.existsSync(filePath);
     });
 
+    // ── Agent ──
+    ipcMain.handle('agent:run', async (_event, userMessage: string, uiState: any, token: string | null) => {
+        return agentService.run(userMessage, uiState, token);
+    });
+    ipcMain.handle('agent:setApiKey', async (_event, key: string) => {
+        agentService.setApiKey(key);
+        // Persist in storage
+        const fs = require('fs');
+        const filePath = path.join(app.getPath('userData'), 'agent-key.json');
+        fs.writeFileSync(filePath, JSON.stringify({ key }), 'utf8');
+    });
+    ipcMain.handle('agent:getApiKey', async () => {
+        if (agentService.getApiKey()) return agentService.getApiKey();
+        // Try loading from storage
+        try {
+            const fs = require('fs');
+            const filePath = path.join(app.getPath('userData'), 'agent-key.json');
+            if (fs.existsSync(filePath)) {
+                const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                if (data.key) {
+                    agentService.setApiKey(data.key);
+                    return data.key;
+                }
+            }
+        } catch {}
+        return null;
+    });
+    ipcMain.handle('agent:confirmAction', async (_event, approved: boolean) => {
+        agentService.resolveConfirmation(approved);
+    });
+    ipcMain.handle('agent:clearHistory', async () => {
+        agentService.clearHistory();
+    });
+
     // ── Storage (persists JSON data in userData) ──
     ipcMain.handle('storage:get', async (_event, key: string) => {
         const fs = require('fs');
@@ -604,6 +640,7 @@ app.whenReady().then(() => {
         updaterService.setWindow(mainWindow);
         terminalService.setWindow(mainWindow);
         gitService.setWindow(mainWindow);
+        agentService.setWindow(mainWindow);
     }
 
     // Check for updates in production after a short delay

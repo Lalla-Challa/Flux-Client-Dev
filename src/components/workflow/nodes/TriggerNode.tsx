@@ -1,6 +1,6 @@
-import React, { memo } from 'react';
+import React, { memo, useState } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
-import { Zap, GitBranch, Clock, Tag, Globe, X } from 'lucide-react';
+import { Zap, GitBranch, Clock, Tag, Globe, X, Plus, Layers } from 'lucide-react';
 
 interface TriggerData {
     triggers: {
@@ -10,6 +10,7 @@ interface TriggerData {
         cron?: string;
     }[];
     onDelete?: () => void;
+    onAddNode?: (type: 'job') => void;
 }
 
 const EVENT_ICONS: Record<string, React.ReactNode> = {
@@ -23,12 +24,20 @@ const EVENT_ICONS: Record<string, React.ReactNode> = {
 };
 
 export const TriggerNode = memo(({ data, selected }: NodeProps<TriggerData>) => {
-    const { triggers, onDelete } = data;
+    const { triggers, onDelete, onAddNode } = data;
+    const [showAddMenu, setShowAddMenu] = useState(false);
 
     return (
         <div className="relative group">
-            <div className={`bg-gradient-to-br from-blue-600/20 to-cyan-600/20 border rounded-xl px-4 py-3 min-w-[200px] shadow-lg shadow-blue-500/5 transition-all ${
-                selected ? 'border-blue-400 ring-2 ring-blue-400/20' : 'border-blue-500/40'
+            {/* Animated glow ring */}
+            {selected && (
+                <div className="absolute -inset-1 rounded-full bg-blue-500/20 blur-md animate-pulse pointer-events-none" />
+            )}
+
+            <div className={`relative bg-zinc-900/80 backdrop-blur-md border rounded-full px-5 py-3 min-w-[200px] shadow-lg transition-all ${
+                selected
+                    ? 'border-blue-500 shadow-lg shadow-blue-500/20'
+                    : 'border-white/10 hover:border-white/20'
             }`}>
                 {/* Delete button */}
                 {onDelete && (
@@ -96,6 +105,29 @@ export const TriggerNode = memo(({ data, selected }: NodeProps<TriggerData>) => 
                 className="!w-4 !h-4 !bg-blue-500 !border-2 !border-blue-300 hover:!w-5 hover:!h-5 hover:!bg-blue-400 !transition-all !cursor-pointer !shadow-lg !shadow-blue-500/50"
                 style={{ bottom: -8 }}
             />
+
+            {/* Add Node Button */}
+            {onAddNode && (
+                <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                    <button
+                        onClick={(e) => { e.stopPropagation(); setShowAddMenu(!showAddMenu); }}
+                        className="w-5 h-5 rounded-full bg-blue-500 hover:bg-blue-400 flex items-center justify-center shadow-lg shadow-blue-500/30 transition-colors"
+                    >
+                        <Plus className="w-3 h-3 text-white" />
+                    </button>
+                    {showAddMenu && (
+                        <div className="absolute top-7 left-1/2 -translate-x-1/2 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 min-w-[120px] z-30">
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onAddNode('job'); setShowAddMenu(false); }}
+                                className="flex items-center gap-2 w-full px-3 py-1.5 text-[11px] text-zinc-300 hover:bg-violet-500/15 hover:text-violet-300 transition-colors"
+                            >
+                                <Layers className="w-3 h-3" />
+                                Add Job
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 });

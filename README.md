@@ -5,7 +5,7 @@
 Flux Client is a powerful, cross-platform Git client designed to streamline your development workflow. Built with Electron, React, and TypeScript, it combines a beautiful dark-mode interface with robust Git features, making complex operations intuitive and fast.
 
 ![License](https://img.shields.io/badge/license-AGPLv3-blue.svg)
-![Version](https://img.shields.io/badge/version-1.1.0-green.svg)
+![Version](https://img.shields.io/badge/version-1.1.2-green.svg)
 
 ## ✨ Features
 
@@ -13,6 +13,7 @@ Flux Client is a powerful, cross-platform Git client designed to streamline your
 - **📈 Visual Git Graph**: Interactive commit history visualization to track branches and merges effortlessly.
 - **⚡ Visual Workflow Editor**: Drag-and-drop CI/CD pipeline builder using React Flow.
 - **🚀 GitHub Actions Dashboard**: Monitor, cancel, and re-run workflows directly from the app.
+- **🤖 Omnipotent AI Agent**: An intelligent, context-aware assistant (powered by Groq & LLaMA 3.3) that can control the UI, run terminal commands, and visually build GitHub Actions workflows.
 - **📝 Monaco-Powered Diff Viewer**: Syntax-highlighted code editor and diff viewer with inline blame.
 - **💻 Integrated Terminal**: Context-aware terminal (xterm.js) that injects the correct Git credentials for the active profile.
 - **🛡️ Merge Conflict Resolver**: One-click conflict resolution (Accept Theirs / Keep Yours).

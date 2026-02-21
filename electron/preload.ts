@@ -135,6 +135,24 @@ export interface ElectronAPI {
         set: (key: string, value: any) => Promise<void>;
     };
 
+    // Agent
+    agent: {
+        run: (userMessage: string, uiState: any, token: string | null) => Promise<string>;
+        setApiKey: (key: string) => Promise<void>;
+        getApiKey: () => Promise<string | null>;
+        confirmAction: (approved: boolean) => Promise<void>;
+        clearHistory: () => Promise<void>;
+        onThinking: (callback: (data: { iteration: number }) => void) => void;
+        onToolStart: (callback: (data: { tool: string; args: any }) => void) => void;
+        onToolComplete: (callback: (data: { tool: string; result: string; error?: boolean }) => void) => void;
+        onToolDenied: (callback: (data: { tool: string }) => void) => void;
+        onConfirmRequest: (callback: (data: { id: string; tool: string; args: any; description: string }) => void) => void;
+        onStateChanged: (callback: (data: any) => void) => void;
+        onAddWorkflowNode: (callback: (data: { type: string; position: { x: number; y: number }; data: any }) => void) => void;
+        onUIAction: (callback: (data: { action: string; payload: any }) => void) => void;
+        removeAllListeners: () => void;
+    };
+
     // Activity Log
     activity: {
         onCommandStart: (callback: (data: any) => void) => void;
@@ -391,6 +409,49 @@ const electronAPI: ElectronAPI = {
         },
         removeStatusListener: () => {
             ipcRenderer.removeAllListeners('update:status');
+        },
+    },
+
+    agent: {
+        run: (userMessage: string, uiState: any, token: string | null) =>
+            ipcRenderer.invoke('agent:run', userMessage, uiState, token),
+        setApiKey: (key: string) => ipcRenderer.invoke('agent:setApiKey', key),
+        getApiKey: () => ipcRenderer.invoke('agent:getApiKey'),
+        confirmAction: (approved: boolean) => ipcRenderer.invoke('agent:confirmAction', approved),
+        clearHistory: () => ipcRenderer.invoke('agent:clearHistory'),
+        onThinking: (callback: (data: any) => void) => {
+            ipcRenderer.on('agent:thinking', (_event, data) => callback(data));
+        },
+        onToolStart: (callback: (data: any) => void) => {
+            ipcRenderer.on('agent:tool_start', (_event, data) => callback(data));
+        },
+        onToolComplete: (callback: (data: any) => void) => {
+            ipcRenderer.on('agent:tool_complete', (_event, data) => callback(data));
+        },
+        onToolDenied: (callback: (data: any) => void) => {
+            ipcRenderer.on('agent:tool_denied', (_event, data) => callback(data));
+        },
+        onConfirmRequest: (callback: (data: any) => void) => {
+            ipcRenderer.on('agent:confirm_request', (_event, data) => callback(data));
+        },
+        onStateChanged: (callback: (data: any) => void) => {
+            ipcRenderer.on('agent:state_changed', (_event, data) => callback(data));
+        },
+        onAddWorkflowNode: (callback: (data: any) => void) => {
+            ipcRenderer.on('agent:add_workflow_node', (_event, data) => callback(data));
+        },
+        onUIAction: (callback: (data: any) => void) => {
+            ipcRenderer.on('agent:ui_action', (_event, data) => callback(data));
+        },
+        removeAllListeners: () => {
+            ipcRenderer.removeAllListeners('agent:thinking');
+            ipcRenderer.removeAllListeners('agent:tool_start');
+            ipcRenderer.removeAllListeners('agent:tool_complete');
+            ipcRenderer.removeAllListeners('agent:tool_denied');
+            ipcRenderer.removeAllListeners('agent:confirm_request');
+            ipcRenderer.removeAllListeners('agent:state_changed');
+            ipcRenderer.removeAllListeners('agent:add_workflow_node');
+            ipcRenderer.removeAllListeners('agent:ui_action');
         },
     },
 

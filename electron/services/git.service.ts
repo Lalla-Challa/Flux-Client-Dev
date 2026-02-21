@@ -305,6 +305,8 @@ export class GitService {
     // ── Status ──
 
     async status(repoPath: string): Promise<FileStatus[]> {
+        if (!fs.existsSync(repoPath)) return [];
+
         const result = await this.exec(repoPath, [
             'status',
             '--porcelain=v2',
@@ -988,6 +990,8 @@ export class GitService {
     }
 
     async listFiles(repoPath: string): Promise<string[]> {
+        if (!fs.existsSync(repoPath)) return [];
+
         const result = await this.exec(repoPath, ['ls-files']);
         if (result.code !== 0) {
             throw new Error(`git ls-files failed: ${result.stderr}`);

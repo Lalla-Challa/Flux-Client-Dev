@@ -1,3 +1,9 @@
 export { TriggerNode } from './TriggerNode';
 export { JobNode } from './JobNode';
 export { StepNode } from './StepNode';
+export { ContextGetterNode } from './ContextGetterNode';
+export { SecretGetterNode } from './SecretGetterNode';
+export { BranchNode } from './BranchNode';
+export { SwitchNode } from './SwitchNode';
+export { MatrixNode } from './MatrixNode';
+export { SubWorkflowNode } from './SubWorkflowNode';

@@ -1,6 +1,6 @@
 # Flux Client - Documentation
 
-**Version**: 1.1.0
+**Version**: 1.1.2
 **License**: AGPLv3
 **Platform**: Windows, Linux, macOS
 
@@ -35,6 +35,7 @@ Flux Client is a modern, minimalist desktop Git GUI with multi-account support. 
    - [Tag Management](#18-tag-management)
    - [Theme Toggle](#19-theme-toggle)
    - [Auto-Updates](#20-auto-updates)
+   - [Omnipotent AI Agent](#21-omnipotent-ai-agent)
 6. [Keyboard Shortcuts](#keyboard-shortcuts)
 7. [Data Flow & IPC Architecture](#data-flow--ipc-architecture)
 8. [State Management](#state-management)
@@ -705,6 +706,24 @@ Flux Client supports automatic updates via `electron-updater`.
 3. The update is downloaded in the background.
 4. The user can choose to install and restart, or dismiss the notification.
 5. Update events (checking, available, downloaded, error) are streamed to the renderer via IPC.
+
+---
+
+### 21. Omnipotent AI Agent
+
+**Components**: `AgentTab.tsx`, `agent.service.ts`, `useAgent.ts`
+
+Flux Client includes a built-in AI assistant powered by Groq and LLaMA 3.3 that acts as a "first-class citizen" capable of controlling the app and performing actions on your behalf.
+
+**Features**:
+- **Context-Aware**: The agent knows what repository is open, what branch you are on, what files are staged or unstaged, and what tab you are currently viewing.
+- **Git Operations**: Can perform essentially any Git operation (stage, commit, branch, rebase, merge, push, pull).
+- **UI Control**: Can navigate between tabs, open repositories, switch GitHub accounts, and toggle the terminal panel using its `ui_*` tool schemas.
+- **Visual Workflow Builder**: Can orchestrate and write GitHub Actions workflows and automatically open them in the app's visual ReactFlow-powered workflow editor (`ui_create_github_workflow`).
+- **Terminal Execution**: Can run arbitrary shell commands in the integrated terminal.
+- **Safety**: Dangerous operations (like `git_push`, `git_reset`, `git_merge`) require explicit user confirmation before the agent executes them.
+- **Performance**: The chat interface is built with isolated React components (`ChatInput`) and memoized message bubbles to ensure 60fps typing regardless of conversation length.
+- **Copy Chat**: Users can easily copy their own messages or the AI's responses with a single click.
 
 ---
 

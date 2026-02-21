@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useActionsStore } from '../../stores/actions.store';
 import { useRepoStore } from '../../stores/repo.store';
 import { ReactFlowProvider, Node, Edge } from 'reactflow';
-import { FiSave, FiX, FiAlertTriangle } from 'react-icons/fi';
-import { Code, Workflow } from 'lucide-react';
+import { FiSave, FiX } from 'react-icons/fi';
+import { AlertCircle, GripVertical, Code, Workflow, Columns2 } from 'lucide-react';
 import { CodeEditor } from '../common/CodeEditor';
 import { WorkflowVisualizer } from '../workflow/WorkflowVisualizer';
 import { yamlToGraph } from '../../lib/yamlToGraph';
 import { graphToYaml } from '../../lib/graphToYaml';
 
-type ViewMode = 'code' | 'visual';
+type ViewMode = 'visual' | 'code' | 'split';
 
 export const WorkflowEditor: React.FC = () => {
     const {
@@ -29,11 +29,21 @@ export const WorkflowEditor: React.FC = () => {
     const [edges, setEdges] = useState<Edge[]>([]);
     const [workflowName, setWorkflowName] = useState('Untitled Workflow');
 
-    // Local state for editing
-    const [filename, setFilename] = useState(''); // For new files
-    const [viewMode, setViewMode] = useState<ViewMode>('visual'); // Default to visual
-    const [yamlContent, setYamlContent] = useState(''); // For code view
-    const [hasUnsavedCodeChanges, setHasUnsavedCodeChanges] = useState(false);
+    // Local state
+    const [filename, setFilename] = useState('');
+    const [viewMode, setViewMode] = useState<ViewMode>('visual');
+    const [yamlContent, setYamlContent] = useState('');
+    const [yamlError, setYamlError] = useState<string | null>(null);
+
+    // Split pane state
+    const [splitRatio, setSplitRatio] = useState(0.55);
+    const isDragging = useRef(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    // Debounce timer for code→visual sync
+    const codeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Flag to prevent feedback loops
+    const syncSource = useRef<'graph' | 'code' | null>(null);
 
     // Parse YAML to graph when file content loads
     useEffect(() => {
@@ -43,88 +53,123 @@ export const WorkflowEditor: React.FC = () => {
             setEdges(result.edges);
             setWorkflowName(result.workflowName || 'Untitled Workflow');
             setYamlContent(fileContent);
-            setHasUnsavedCodeChanges(false);
+            setYamlError(null);
         } else {
-            // New workflow - start with empty graph
             setNodes([]);
             setEdges([]);
             setWorkflowName('Untitled Workflow');
             setYamlContent('');
-            setHasUnsavedCodeChanges(false);
+            setYamlError(null);
         }
     }, [fileContent]);
 
-    // Handle changes from visual editor
+    // Handle changes from visual editor → update YAML
     const handleGraphChange = useCallback((newNodes: Node[], newEdges: Edge[], newName: string) => {
+        if (syncSource.current === 'code') return;
+        syncSource.current = 'graph';
         setNodes(newNodes);
         setEdges(newEdges);
         setWorkflowName(newName);
-
-        // Regenerate YAML from graph
         const generatedYaml = graphToYaml(newNodes, newEdges, newName);
         setYamlContent(generatedYaml);
-        setHasUnsavedCodeChanges(false);
+        setYamlError(null);
+        setTimeout(() => { syncSource.current = null; }, 0);
     }, []);
 
-    // Handle changes in code editor
+    // Handle changes in code editor → debounced update to graph
     const handleCodeChange = useCallback((newCode: string) => {
-        setYamlContent(newCode);
-        setHasUnsavedCodeChanges(true);
+        setYamlContent(newCode || '');
+        if (codeDebounceRef.current) clearTimeout(codeDebounceRef.current);
+        codeDebounceRef.current = setTimeout(() => {
+            if (!newCode || !newCode.trim()) { setYamlError(null); return; }
+            const result = yamlToGraph(newCode);
+            if (result.error) { setYamlError(result.error); return; }
+            syncSource.current = 'code';
+            setNodes(result.nodes);
+            setEdges(result.edges);
+            setWorkflowName(result.workflowName || 'Untitled Workflow');
+            setYamlError(null);
+            setTimeout(() => { syncSource.current = null; }, 0);
+        }, 500);
     }, []);
 
-    // Switch to visual mode - parse YAML if there are unsaved code changes
-    const handleSwitchToVisual = useCallback(() => {
-        if (hasUnsavedCodeChanges) {
-            if (confirm('You have unsaved YAML changes. Switching to Visual mode will parse your YAML. Continue?')) {
+    // When switching TO visual from code-only, do an immediate parse
+    const handleSetViewMode = useCallback((mode: ViewMode) => {
+        if ((viewMode === 'code') && (mode === 'visual' || mode === 'split')) {
+            // Sync the latest YAML into graph state immediately
+            if (yamlContent.trim()) {
                 const result = yamlToGraph(yamlContent);
-                if (result.error) {
-                    alert(`YAML Parse Error: ${result.error}\n\nPlease fix the YAML or discard changes.`);
-                    return;
+                if (!result.error) {
+                    setNodes(result.nodes);
+                    setEdges(result.edges);
+                    setWorkflowName(result.workflowName || 'Untitled Workflow');
+                    setYamlError(null);
                 }
-                setNodes(result.nodes);
-                setEdges(result.edges);
-                setWorkflowName(result.workflowName || 'Untitled Workflow');
-                setHasUnsavedCodeChanges(false);
-                setViewMode('visual');
             }
-        } else {
-            setViewMode('visual');
         }
-    }, [hasUnsavedCodeChanges, yamlContent]);
+        setViewMode(mode);
+    }, [viewMode, yamlContent]);
+
+    // Cleanup debounce on unmount
+    useEffect(() => {
+        return () => { if (codeDebounceRef.current) clearTimeout(codeDebounceRef.current); };
+    }, []);
+
+    // ── Split pane drag handling ─────────────────────────────────
+    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        isDragging.current = true;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    }, []);
+
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!isDragging.current || !containerRef.current) return;
+            const rect = containerRef.current.getBoundingClientRect();
+            setSplitRatio(Math.max(0.25, Math.min(0.75, (e.clientX - rect.left) / rect.width)));
+        };
+        const handleMouseUp = () => {
+            isDragging.current = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, []);
 
     const handleSave = async () => {
         if (!activeRepoPath) return;
-
-        // Generate YAML from current graph state
         const contentToSave = graphToYaml(nodes, edges, workflowName);
-
         try {
             if (editorMode === 'create') {
                 let name = filename;
-                if (!name.endsWith('.yml') && !name.endsWith('.yaml')) {
-                    name += '.yml';
-                }
-                const path = `${activeRepoPath}/.github/workflows/${name}`;
-                await createWorkflowFile(path, contentToSave);
+                if (!name.endsWith('.yml') && !name.endsWith('.yaml')) name += '.yml';
+                await createWorkflowFile(`${activeRepoPath}/.github/workflows/${name}`, contentToSave);
             } else if (selectedWorkflowPath) {
                 await saveWorkflowFile(selectedWorkflowPath, contentToSave);
             }
-        } catch (e) {
-            // Error handling in store, displayed via error state
-        }
+        } catch (_) {}
     };
+
+    const showVisual = viewMode === 'visual' || viewMode === 'split';
+    const showCode = viewMode === 'code' || viewMode === 'split';
 
     return (
         <div className="flex flex-col h-full bg-zinc-900">
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800 bg-zinc-900">
                 <div className="flex items-center gap-4">
                     {editorMode === 'create' ? (
                         <div className="flex items-center gap-2">
                             <span className="text-sm text-zinc-400">.github/workflows/</span>
                             <input
                                 type="text"
-                                className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm text-zinc-100 outline-none focus:border-blue-500 w-64"
+                                className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm text-zinc-100 outline-none focus:border-blue-500 w-56"
                                 placeholder="my-workflow.yml"
                                 value={filename}
                                 onChange={e => setFilename(e.target.value)}
@@ -133,7 +178,7 @@ export const WorkflowEditor: React.FC = () => {
                         </div>
                     ) : (
                         <div className="flex flex-col">
-                            <span className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Editing</span>
+                            <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">Editing</span>
                             <span className="font-mono text-sm text-zinc-200">
                                 {selectedWorkflowPath?.split('/').pop()}
                             </span>
@@ -141,32 +186,28 @@ export const WorkflowEditor: React.FC = () => {
                     )}
 
                     {/* View Mode Toggle */}
-                    <div className="flex items-center bg-zinc-800 rounded-lg border border-zinc-700 p-0.5">
-                        <button
-                            onClick={() => setViewMode('code')}
-                            className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-all ${
-                                viewMode === 'code'
-                                    ? 'bg-zinc-700 text-zinc-100 shadow-sm'
-                                    : 'text-zinc-500 hover:text-zinc-300'
-                            }`}
-                        >
-                            <Code className="w-3.5 h-3.5" />
-                            Code
-                            {hasUnsavedCodeChanges && (
-                                <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" title="Unsaved YAML changes" />
-                            )}
-                        </button>
-                        <button
-                            onClick={handleSwitchToVisual}
-                            className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-all ${
-                                viewMode === 'visual'
-                                    ? 'bg-zinc-700 text-zinc-100 shadow-sm'
-                                    : 'text-zinc-500 hover:text-zinc-300'
-                            }`}
-                        >
-                            <Workflow className="w-3.5 h-3.5" />
-                            Visual
-                        </button>
+                    <div className="flex items-center bg-zinc-800 rounded-lg border border-zinc-700 p-0.5 gap-0.5">
+                        <ViewToggleBtn
+                            active={viewMode === 'visual'}
+                            onClick={() => handleSetViewMode('visual')}
+                            icon={<Workflow className="w-3.5 h-3.5" />}
+                            label="Visual"
+                            title="Visual editor only"
+                        />
+                        <ViewToggleBtn
+                            active={viewMode === 'split'}
+                            onClick={() => handleSetViewMode('split')}
+                            icon={<Columns2 className="w-3.5 h-3.5" />}
+                            label="Split"
+                            title="Side-by-side split view"
+                        />
+                        <ViewToggleBtn
+                            active={viewMode === 'code'}
+                            onClick={() => handleSetViewMode('code')}
+                            icon={<Code className="w-3.5 h-3.5" />}
+                            label="Code"
+                            title="YAML code editor only"
+                        />
                     </div>
                 </div>
 
@@ -188,7 +229,7 @@ export const WorkflowEditor: React.FC = () => {
                         ) : (
                             <FiSave className="w-3 h-3" />
                         )}
-                        {isLoading ? 'Saving...' : 'Save Workflow'}
+                        {isLoading ? 'Saving...' : 'Save'}
                     </button>
                 </div>
             </div>
@@ -200,42 +241,90 @@ export const WorkflowEditor: React.FC = () => {
                 </div>
             )}
 
-            {/* Warning Banner for Code Changes */}
-            {viewMode === 'code' && hasUnsavedCodeChanges && (
-                <div className="px-4 py-2 bg-yellow-500/10 border-b border-yellow-500/20 text-yellow-400 text-sm flex items-center gap-2">
-                    <FiAlertTriangle className="w-4 h-4" />
-                    <span>
-                        <strong>Note:</strong> Changes in code view are not synchronized with the visual editor until you switch back to Visual mode or save.
-                    </span>
-                </div>
-            )}
+            {/* Editor Area */}
+            <div ref={containerRef} className="flex-1 overflow-hidden relative bg-zinc-950 flex">
 
-            {/* Editor / Visualizer Area */}
-            <div className="flex-1 overflow-hidden relative bg-zinc-950">
-                {viewMode === 'code' ? (
-                    <CodeEditor
-                        value={yamlContent}
-                        language="yaml"
-                        onChange={(val) => handleCodeChange(val || '')}
-                        filename={selectedWorkflowPath || (filename ? `.github/workflows/${filename}` : undefined)}
-                    />
-                ) : (
-                    <ReactFlowProvider>
-                        <WorkflowVisualizer
-                            initialNodes={nodes}
-                            initialEdges={edges}
-                            workflowName={workflowName}
-                            onChange={handleGraphChange}
-                        />
-                    </ReactFlowProvider>
+                {/* Visual pane */}
+                {showVisual && (
+                    <div
+                        style={viewMode === 'split' ? { width: `${splitRatio * 100}%` } : undefined}
+                        className={viewMode !== 'split' ? 'flex-1 h-full' : 'h-full'}
+                    >
+                        <ReactFlowProvider>
+                            <WorkflowVisualizer
+                                initialNodes={nodes}
+                                initialEdges={edges}
+                                workflowName={workflowName}
+                                onChange={handleGraphChange}
+                            />
+                        </ReactFlowProvider>
+                    </div>
+                )}
+
+                {/* Resize handle (split only) */}
+                {viewMode === 'split' && (
+                    <div
+                        onMouseDown={handleMouseDown}
+                        className="w-2 flex-shrink-0 bg-zinc-800 hover:bg-zinc-700 cursor-col-resize flex items-center justify-center border-x border-zinc-700/50 transition-colors group"
+                    >
+                        <GripVertical className="w-3 h-3 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+                    </div>
+                )}
+
+                {/* Code pane */}
+                {showCode && (
+                    <div
+                        style={viewMode === 'split' ? { width: `${(1 - splitRatio) * 100}%` } : undefined}
+                        className={`${viewMode !== 'split' ? 'flex-1' : ''} h-full flex flex-col`}
+                    >
+                        {yamlError && (
+                            <div className="px-3 py-1.5 bg-red-500/10 border-b border-red-500/20 text-red-400 text-[11px] flex items-center gap-1.5 shrink-0">
+                                <AlertCircle className="w-3 h-3" />
+                                <span className="truncate">YAML Error: {yamlError}</span>
+                            </div>
+                        )}
+                        <div className="flex-1">
+                            <CodeEditor
+                                value={yamlContent}
+                                language="yaml"
+                                onChange={(val) => handleCodeChange(val || '')}
+                                filename={selectedWorkflowPath || (filename ? `.github/workflows/${filename}` : undefined)}
+                            />
+                        </div>
+                    </div>
                 )}
             </div>
-
-            {editorMode === 'create' && viewMode === 'visual' && nodes.length === 0 && (
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none text-center">
-                    <p className="text-sm">Click the <strong>Add Trigger</strong> button to start building your workflow</p>
-                </div>
-            )}
         </div>
     );
 };
+
+// ── View toggle button ────────────────────────────────────────────
+
+function ViewToggleBtn({
+    active,
+    onClick,
+    icon,
+    label,
+    title,
+}: {
+    active: boolean;
+    onClick: () => void;
+    icon: React.ReactNode;
+    label: string;
+    title: string;
+}) {
+    return (
+        <button
+            onClick={onClick}
+            title={title}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                active
+                    ? 'bg-zinc-700 text-zinc-100 shadow-sm'
+                    : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+        >
+            {icon}
+            {label}
+        </button>
+    );
+}

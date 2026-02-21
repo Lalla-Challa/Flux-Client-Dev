@@ -81,6 +81,22 @@ export interface ElectronAPI {
         setIdentity: (name: string, email: string) => Promise<void>;
         clearIdentity: () => Promise<void>;
     };
+    agent: {
+        run: (userMessage: string, uiState: AgentUIState, token: string | null) => Promise<string>;
+        setApiKey: (key: string) => Promise<void>;
+        getApiKey: () => Promise<string | null>;
+        confirmAction: (approved: boolean) => Promise<void>;
+        clearHistory: () => Promise<void>;
+        onThinking: (callback: (data: { iteration: number }) => void) => void;
+        onToolStart: (callback: (data: { tool: string; args: any }) => void) => void;
+        onToolComplete: (callback: (data: { tool: string; result: string; error?: boolean }) => void) => void;
+        onToolDenied: (callback: (data: { tool: string }) => void) => void;
+        onConfirmRequest: (callback: (data: AgentConfirmRequest) => void) => void;
+        onStateChanged: (callback: (data: any) => void) => void;
+        onAddWorkflowNode: (callback: (data: { type: string; position: { x: number; y: number }; data: any }) => void) => void;
+        onUIAction: (callback: (data: { action: string; payload: any }) => void) => void;
+        removeAllListeners: () => void;
+    };
     dialog: {
         openDirectory: () => Promise<string | null>;
     };
@@ -160,6 +176,32 @@ export interface ActivityCommandComplete {
     exitCode: number;
     status: 'success' | 'error';
     errorMessage?: string;
+}
+
+export interface AgentUIState {
+    repoPath: string | null;
+    branch: string | null;
+    uncommittedFiles: { path: string; status: string; staged: boolean }[];
+    selectedNodes: { id: string; type: string }[];
+    activeTab: string;
+    accounts: { id: string; username: string; label: string }[];
+    activeAccount: string | null;
+    repositories: { path: string; name: string }[];
+    terminals: { id: string; title: string }[];
+}
+
+export interface AgentConfirmRequest {
+    id: string;
+    tool: string;
+    args: Record<string, any>;
+    description: string;
+}
+
+export interface AgentToolEvent {
+    tool: string;
+    args?: any;
+    result?: string;
+    error?: boolean;
 }
 
 declare global {
