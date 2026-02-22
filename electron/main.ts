@@ -497,8 +497,28 @@ function registerIpcHandlers(): void {
     ipcMain.handle('git:setIdentity', async (_event, name: string, email: string) => {
         gitService.setActiveIdentity(name, email);
     });
-    ipcMain.handle('git:clearIdentity', async () => {
-        gitService.clearActiveIdentity();
+    ipcMain.handle(
+        'git:clearIdentity',
+        async () => {
+            await gitService.clearActiveIdentity();
+        }
+    );
+
+    // LFS IPC bindings
+    ipcMain.handle('git:isLfsInstalled', async () => {
+        return await gitService.isLfsInstalled();
+    });
+
+    ipcMain.handle('git:lfsTrack', async (_event, repoPath: string, pattern: string) => {
+        await gitService.trackLfs(repoPath, pattern);
+    });
+
+    ipcMain.handle('git:lfsUntrack', async (_event, repoPath: string, pattern: string) => {
+        await gitService.untrackLfs(repoPath, pattern);
+    });
+
+    ipcMain.handle('git:getLfsTrackedFiles', async (_event, repoPath: string) => {
+        return await gitService.getLfsTrackedFiles(repoPath);
     });
 
     ipcMain.handle('git:clone', async (_event, url: string, destination: string, token?: string) => {
@@ -575,27 +595,27 @@ function registerIpcHandlers(): void {
     ipcMain.handle('agent:run', async (_event, userMessage: string, uiState: any, token: string | null) => {
         return agentService.run(userMessage, uiState, token);
     });
-    ipcMain.handle('agent:setApiKey', async (_event, key: string) => {
-        agentService.setApiKey(key);
+    ipcMain.handle('agent:setConfig', async (_event, config: any) => {
+        agentService.setConfig(config);
         // Persist in storage
         const fs = require('fs');
-        const filePath = path.join(app.getPath('userData'), 'agent-key.json');
-        fs.writeFileSync(filePath, JSON.stringify({ key }), 'utf8');
+        const filePath = path.join(app.getPath('userData'), 'agent-config.json');
+        fs.writeFileSync(filePath, JSON.stringify(config), 'utf8');
     });
-    ipcMain.handle('agent:getApiKey', async () => {
-        if (agentService.getApiKey()) return agentService.getApiKey();
+    ipcMain.handle('agent:getConfig', async () => {
+        if (agentService.getConfig()) return agentService.getConfig();
         // Try loading from storage
         try {
             const fs = require('fs');
-            const filePath = path.join(app.getPath('userData'), 'agent-key.json');
+            const filePath = path.join(app.getPath('userData'), 'agent-config.json');
             if (fs.existsSync(filePath)) {
-                const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-                if (data.key) {
-                    agentService.setApiKey(data.key);
-                    return data.key;
+                const config = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                if (config) {
+                    agentService.setConfig(config);
+                    return config;
                 }
             }
-        } catch {}
+        } catch { }
         return null;
     });
     ipcMain.handle('agent:confirmAction', async (_event, approved: boolean) => {

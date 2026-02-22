@@ -80,11 +80,17 @@ export interface ElectronAPI {
         reflog: (repoPath: string, limit?: number) => Promise<ReflogEntry[]>;
         setIdentity: (name: string, email: string) => Promise<void>;
         clearIdentity: () => Promise<void>;
+
+        // LFS
+        isLfsInstalled: () => Promise<boolean>;
+        lfsTrack: (repoPath: string, pattern: string) => Promise<void>;
+        lfsUntrack: (repoPath: string, pattern: string) => Promise<void>;
+        getLfsTrackedFiles: (repoPath: string) => Promise<string[]>;
     };
     agent: {
         run: (userMessage: string, uiState: AgentUIState, token: string | null) => Promise<string>;
-        setApiKey: (key: string) => Promise<void>;
-        getApiKey: () => Promise<string | null>;
+        setConfig: (config: AgentConfig) => Promise<void>;
+        getConfig: () => Promise<AgentConfig>;
         confirmAction: (approved: boolean) => Promise<void>;
         clearHistory: () => Promise<void>;
         onThinking: (callback: (data: { iteration: number }) => void) => void;
@@ -148,6 +154,20 @@ export interface TerminalContext {
     displayName?: string;
     email?: string;
     token?: string;
+    env?: Record<string, string>;
+}
+
+export interface AgentConfig {
+    provider: 'groq' | 'deepseek' | 'anthropic' | 'openai' | 'grok' | 'gemini';
+    model: string;
+    keys: {
+        groq?: string;
+        deepseek?: string;
+        anthropic?: string;
+        openai?: string;
+        grok?: string;
+        gemini?: string;
+    };
 }
 
 export interface ReflogEntry {

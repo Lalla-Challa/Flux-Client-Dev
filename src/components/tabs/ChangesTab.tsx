@@ -12,6 +12,11 @@ export function ChangesTab() {
     const activeRepoPath = useRepoStore((s) => s.activeRepoPath);
     const stageFiles = useRepoStore((s) => s.stageFiles);
     const unstageFiles = useRepoStore((s) => s.unstageFiles);
+
+    // LFS State
+    const isLfsAvailable = useRepoStore((s) => s.isLfsAvailable);
+    const lfsFiles = useRepoStore((s) => s.lfsFiles);
+    const toggleLfsTrack = useRepoStore((s) => s.toggleLfsTrack);
     const commitMessage = useUIStore((s) => s.commitMessage);
     const setCommitMessage = useUIStore((s) => s.setCommitMessage);
     const selectedFile = useUIStore((s) => s.selectedFile);
@@ -200,6 +205,9 @@ export function ChangesTab() {
                                 isSelected={selectedFile === file.path}
                                 onClick={() => setSelectedFile(file.path)}
                                 onToggle={() => unstageFiles([file.path])}
+                                isLfsTracked={lfsFiles.includes(file.path)}
+                                isLfsAvailable={isLfsAvailable}
+                                onToggleLfs={() => toggleLfsTrack(file.path, lfsFiles.includes(file.path))}
                             />
                         ))}
                     </div>
@@ -251,6 +259,9 @@ export function ChangesTab() {
                                         }
                                     }
                                 }}
+                                isLfsTracked={lfsFiles.includes(file.path)}
+                                isLfsAvailable={isLfsAvailable}
+                                onToggleLfs={() => toggleLfsTrack(file.path, lfsFiles.includes(file.path))}
                             />
                         ))}
                     </div>
@@ -286,12 +297,18 @@ function FileItem({
     onClick,
     onToggle,
     onDiscard,
+    isLfsTracked,
+    isLfsAvailable,
+    onToggleLfs,
 }: {
     file: FileStatus;
     isSelected: boolean;
     onClick: () => void;
     onToggle: () => void;
     onDiscard?: () => void;
+    isLfsTracked?: boolean;
+    isLfsAvailable?: boolean;
+    onToggleLfs?: () => void;
 }) {
     const statusColors: Record<string, string> = {
         added: 'text-status-added',
@@ -337,7 +354,30 @@ function FileItem({
             </button>
 
             {/* File path */}
-            <span className="text-xs font-mono truncate flex-1">{file.path}</span>
+            <span className="text-xs font-mono truncate flex-1 flex items-center gap-1.5">
+                {file.path}
+                {isLfsTracked && (
+                    <span className="px-1 py-0.5 rounded-sm bg-brand-600/20 text-brand-400 text-[9px] font-bold uppercase tracking-wider items-center flex" title="Tracked by Git Large File Storage">
+                        LFS
+                    </span>
+                )}
+            </span>
+
+            {/* Toggle LFS Button (Only if available) */}
+            {isLfsAvailable && onToggleLfs && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleLfs();
+                    }}
+                    className={`opacity-0 group-hover:opacity-100 p-1 rounded transition-all ${isLfsTracked ? 'text-brand-400 hover:bg-brand-500/10' : 'text-text-tertiary hover:bg-surface-4 hover:text-text-primary'}`}
+                    title={isLfsTracked ? "Untrack from Git LFS" : "Track using Git LFS"}
+                >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                    </svg>
+                </button>
+            )}
 
             {/* Discard Button (Only for unstaged) */}
             {!file.staged && onDiscard && (

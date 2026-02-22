@@ -72,6 +72,12 @@ interface RepoState {
     commits: CommitInfo[];
     branches: BranchInfo[];
     currentDiff: string;
+
+    // LFS
+    isLfsAvailable: boolean;
+    lfsFiles: string[];
+    toggleLfsTrack: (file: string, isTracked: boolean) => Promise<void>;
+
     isLoadingStatus: boolean;
 
     // Blame
@@ -212,6 +218,10 @@ export const useRepoStore = create<RepoState>((set, get) => ({
     commits: [],
     branches: [],
     currentDiff: '',
+
+    isLfsAvailable: false,
+    lfsFiles: [],
+
     isLoadingStatus: false,
 
     blameData: null,
@@ -669,7 +679,20 @@ export const useRepoStore = create<RepoState>((set, get) => ({
         set({ isLoadingStatus: true });
         try {
             const fileStatuses = await api().git.status(activeRepoPath);
-            set({ fileStatuses });
+
+            let isLfsAvailable = false;
+            let lfsFiles: string[] = [];
+
+            try {
+                isLfsAvailable = await api().git.isLfsInstalled();
+                if (isLfsAvailable) {
+                    lfsFiles = await api().git.getLfsTrackedFiles(activeRepoPath);
+                }
+            } catch (e) {
+                console.error('Failed to load LFS context', e);
+            }
+
+            set({ fileStatuses, isLfsAvailable, lfsFiles });
         } catch (error) {
             console.error('Status refresh failed:', error);
         } finally {
@@ -719,6 +742,26 @@ export const useRepoStore = create<RepoState>((set, get) => ({
 
         await api().git.stage(activeRepoPath, files);
         get().refreshStatus();
+    },
+
+    toggleLfsTrack: async (file, isTracked) => {
+        const { activeRepoPath } = get();
+        if (!activeRepoPath) return;
+
+        try {
+            if (isTracked) {
+                await api().git.lfsUntrack(activeRepoPath, file);
+            } else {
+                await api().git.lfsTrack(activeRepoPath, file);
+            }
+            // Auto stage the affected .gitattributes to ensure atomic usability
+            await api().git.stage(activeRepoPath, ['.gitattributes']);
+            await get().refreshStatus();
+            useUIStore.getState().showNotification('success', isTracked ? `Removed LFS tracking from ${file}` : `Tracking ${file} via LFS`);
+        } catch (error: any) {
+            console.error('LFS toggle failed:', error);
+            useUIStore.getState().showNotification('error', `Failed to configure LFS for ${file}`);
+        }
     },
 
     unstageFiles: async (files) => {

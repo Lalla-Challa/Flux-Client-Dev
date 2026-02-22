@@ -1,4 +1,6 @@
-import Groq from 'groq-sdk';
+import OpenAI from 'openai';
+import { Anthropic } from '@anthropic-ai/sdk';
+import { GoogleGenAI } from '@google/genai';
 import { BrowserWindow } from 'electron';
 import { GitService } from './git.service';
 
@@ -7,8 +9,22 @@ import { GitService } from './git.service';
 export interface AgentMessage {
     role: 'user' | 'assistant' | 'system' | 'tool';
     content: string;
+    reasoning_content?: string;
     tool_call_id?: string;
     tool_calls?: any[];
+}
+
+export interface AgentConfig {
+    provider: 'groq' | 'deepseek' | 'anthropic' | 'openai' | 'grok' | 'gemini';
+    model: string;
+    keys: {
+        groq?: string;
+        deepseek?: string;
+        anthropic?: string;
+        openai?: string;
+        grok?: string;
+        gemini?: string;
+    };
 }
 
 export interface UIState {
@@ -49,7 +65,7 @@ const DANGEROUS_TOOLS = new Set([
 
 // ─── Tool Schemas (Groq function definitions) ───────────────────
 
-const TOOL_SCHEMAS: Groq.Chat.ChatCompletionTool[] = [
+const TOOL_SCHEMAS: any[] = [
     {
         type: 'function',
         function: {
@@ -239,11 +255,54 @@ const TOOL_SCHEMAS: Groq.Chat.ChatCompletionTool[] = [
         type: 'function',
         function: {
             name: 'read_file',
-            description: 'Read the contents of a file in the repository.',
+            description: 'Read the contents of any file by its absolute or repo-relative path.',
             parameters: {
                 type: 'object',
                 properties: {
-                    path: { type: 'string', description: 'Relative file path within the repo.' },
+                    path: { type: 'string', description: 'File path (relative to repo root, or absolute).' },
+                },
+                required: ['path'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'write_file',
+            description: 'Write (or overwrite) a file with given content. Use this to create or modify files directly without using the terminal.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    path: { type: 'string', description: 'Relative path from repo root, or absolute path on disk.' },
+                    content: { type: 'string', description: 'Full file content to write.' },
+                },
+                required: ['path', 'content'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'check_path_exists',
+            description: 'Check whether a file or directory exists on disk. Returns { exists: true/false, type: "file"|"directory"|"none" }. Use this to VERIFY that an action actually succeeded (e.g. after cloning a repo, verify the folder was created).',
+            parameters: {
+                type: 'object',
+                properties: {
+                    path: { type: 'string', description: 'Absolute or repo-relative path to check.' },
+                },
+                required: ['path'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'add_repository',
+            description: 'Register an existing local folder as a tracked repository in the Flux sidebar. Use this AFTER cloning or locating a repository on disk so that the user can see it in the app. Always call this after a clone operation.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    path: { type: 'string', description: 'The absolute local path of the repository to add to the sidebar.' },
                 },
                 required: ['path'],
             },
@@ -420,32 +479,44 @@ const TOOL_SCHEMAS: Groq.Chat.ChatCompletionTool[] = [
 
 function buildSystemPrompt(uiState: UIState): string {
     return `You are Flux AI, an intelligent agent embedded in the Flux Client Git desktop app.
-You can perform Git operations, manipulate the visual workflow editor, and control the app's UI on behalf of the user.
+You can perform Git operations, write files directly, manipulate the visual workflow editor, and control the app's UI on behalf of the user.
 
 CURRENT STATE:
-- Repository: ${uiState.repoPath || 'No repo open'} (Tracked repos: ${uiState.repositories?.map(r => r.name).join(', ') || 'None'})
+- Repository: ${uiState.repoPath || 'No repo open'}
+- Tracked repos: ${uiState.repositories?.map(r => `${r.name} (Path: ${r.path})`).join(', ') || 'None'}
 - Branch: ${uiState.branch || 'unknown'}
 - Uncommitted files: ${uiState.uncommittedFiles.length > 0 ? uiState.uncommittedFiles.map(f => `${f.path} (${f.status}${f.staged ? ', staged' : ''})`).join(', ') : 'None'}
 - Active tab: ${uiState.activeTab}
 - Selected workflow nodes: ${uiState.selectedNodes.length > 0 ? uiState.selectedNodes.map(n => `${n.id} (${n.type})`).join(', ') : 'None'}
 - Active Account: ${uiState.activeAccount || 'None'} (Available: ${uiState.accounts?.map(a => a.username).join(', ') || 'None'})
 
-RULES:
-- Always check status before committing to understand what will be included.
+CORE LOOP — ALWAYS FOLLOW:
+1. PLAN: Identify the minimum set of steps to achieve the user's goal.
+2. ACT: Execute each step using the appropriate tool.
+3. VERIFY: After every significant action, confirm the outcome using a verification tool (check_path_exists, git_status, git_log, list_files, etc.).
+4. ADAPT: If verification shows failure, do NOT repeat the same action. Diagnose the root cause and try a DIFFERENT strategy.
+5. ESCALATE: If two different strategies fail, clearly explain what failed and WHY, then ask the user for the specific information needed (e.g. exact repo path, correct remote URL, credentials).
+
+CRITICAL RULES:
+- ADDING A REPOSITORY: If the user asks to add or clone a repo, run the clone/init via terminal_run_command, then ALWAYS call check_path_exists to verify the folder was created. If it was, call add_repository to register it in the sidebar. If check_path_exists returns false, the operation failed — try a different strategy before giving up.
+- GIT PUSH FAILURES: If git_push fails, call git_log and git_branches to understand the state. Common fixes: set_upstream=true, check remote URL is correct with terminal_run_command('git remote -v'), verify authentication. Try each fix, verify, and only escalate to the user if you cannot resolve it.
+- FILE WRITES: Use write_file for any file creation or modification. Do NOT use terminal_run_command to write files (echo, cat, etc.) — write_file is direct and reliable.
+- VERIFICATION IS MANDATORY: After calling ui_open_repository, add_repository, git_push, git_commit, git_clone/init, or any operation that changes app or disk state, always follow up with a verification call to confirm success.
+- NEVER repeat a tool call that already failed with the same arguments. Change the approach.
+- Always check git_status before committing to understand what will be included.
 - When the user asks to commit, stage all relevant files first unless they specify otherwise.
 - For destructive operations (push, reset, merge, rebase, delete branch), always explain what you will do before calling the tool.
-- Identify the user's intent: if they ask to switch accounts, use ui_switch_account. If they ask to navigate somewhere, use ui_navigate_tab. If they ask to open a repo, use ui_open_repository. DO NOT apologize for lacking capabilities; you can control the UI directly.
-- When the user asks to create or edit a workflow/action, ALWAYS use \`ui_create_github_workflow\` or \`ui_edit_github_workflow\`. Using these tools will present the changes visually to the user in the app. Do NOT use terminal commands to overwrite workflows.
-- If a tool call fails, analyze the error and try a different approach. Do not repeat the same failed call.
-- Keep responses concise. Explain what you did, not what you will do.
+- ACTIVE LFS AWARENESS: If the user asks you to commit large binary assets (.mp4, .bin, .safetensors, .psd, etc.), configure Git LFS BEFORE staging them. Use terminal_run_command with 'git lfs track "*.ext"', then 'git add .gitattributes'.
+- REPOSITORY SWITCHING: When the user asks to switch to a repo, ALWAYS use ui_open_repository. Do NOT use terminal_run_command with cd.
+- WORKFLOWS: When creating or editing GitHub Actions workflows, ALWAYS use ui_create_github_workflow or ui_edit_github_workflow for the visual editor.
+- Keep responses concise. Explain what you did and what result was verified, not what you plan to do.
 - When adding workflow nodes, use reasonable default positions if not specified.`;
 }
 
 // ─── Agent Service ──────────────────────────────────────────────
 
 export class AgentService {
-    private groq: Groq | null = null;
-    private apiKey: string | null = null;
+    private config: AgentConfig | null = null;
     private gitService: GitService;
     private mainWindow: BrowserWindow | null = null;
     private pendingConfirmation: {
@@ -462,13 +533,12 @@ export class AgentService {
         this.mainWindow = window;
     }
 
-    setApiKey(key: string) {
-        this.apiKey = key;
-        this.groq = new Groq({ apiKey: key });
+    setConfig(config: AgentConfig) {
+        this.config = config;
     }
 
-    getApiKey(): string | null {
-        return this.apiKey;
+    getConfig(): AgentConfig | null {
+        return this.config;
     }
 
     clearHistory() {
@@ -487,8 +557,8 @@ export class AgentService {
     // ── Main dispatch loop ───────────────────────────────────────
 
     async run(userMessage: string, uiState: UIState, token: string | null): Promise<string> {
-        if (!this.groq) {
-            throw new Error('Agent not configured. Please set your Groq API key in Settings.');
+        if (!this.config || !this.config.provider || !this.config.keys[this.config.provider]) {
+            throw new Error(`Agent not configured. Please set your ${this.config?.provider || 'AI Provider'} API key in Settings.`);
         }
 
         if (!uiState.repoPath) {
@@ -509,7 +579,7 @@ export class AgentService {
         // Groq messages (system + full history)
         const messages = [systemMsg, ...this.conversationHistory];
 
-        const MAX_ITERATIONS = 10;
+        const MAX_ITERATIONS = 50;
         let iteration = 0;
 
         while (iteration < MAX_ITERATIONS) {
@@ -517,33 +587,24 @@ export class AgentService {
 
             this.emit('agent:thinking', { iteration });
 
-            let response;
+            let assistantMsg: any;
             try {
-                response = await this.groq.chat.completions.create({
-                    model: 'llama-3.3-70b-versatile',
-                    messages: messages as any,
-                    tools: TOOL_SCHEMAS,
-                    tool_choice: 'auto',
-                    temperature: 0.1,
-                    max_tokens: 4096,
-                });
+                assistantMsg = await this.executeLLMRequest(messages);
             } catch (err: any) {
-                const errorMsg = `Groq API error: ${err.message || err}`;
+                const errorMsg = `API error: ${err.message || err}`;
                 this.conversationHistory.push({ role: 'assistant', content: errorMsg });
                 return errorMsg;
             }
 
-            const choice = response.choices[0];
-            if (!choice) {
+            if (!assistantMsg) {
                 return 'No response from the model.';
             }
-
-            const assistantMsg = choice.message;
 
             // Add assistant message to history
             const historyEntry: AgentMessage = {
                 role: 'assistant',
                 content: assistantMsg.content || '',
+                reasoning_content: assistantMsg.reasoning_content,
             };
             if (assistantMsg.tool_calls && assistantMsg.tool_calls.length > 0) {
                 historyEntry.tool_calls = assistantMsg.tool_calls;
@@ -621,6 +682,176 @@ export class AgentService {
         return 'Agent reached maximum iterations. Please try a simpler request.';
     }
 
+    private async executeLLMRequest(messages: AgentMessage[]): Promise<any> {
+        const provider = this.config!.provider;
+        const model = this.config!.model;
+        const key = this.config!.keys[provider]!;
+
+        if (provider === 'groq' || provider === 'deepseek' || provider === 'openai' || provider === 'grok') {
+            let baseURL = undefined;
+            if (provider === 'deepseek') baseURL = 'https://api.deepseek.com/v1';
+            if (provider === 'grok') baseURL = 'https://api.x.ai/v1';
+            if (provider === 'groq') baseURL = 'https://api.groq.com/openai/v1';
+
+            const openai = new OpenAI({ apiKey: key, baseURL });
+            const response = await openai.chat.completions.create({
+                model,
+                messages: messages as any,
+                tools: TOOL_SCHEMAS as any, // Cast schemas depending on OpenAI typing compat
+                tool_choice: 'auto',
+                temperature: 0.1,
+                // Avoid max_tokens if possible for reasoning models
+                max_tokens: (model.startsWith('o1') || model.startsWith('o3') || model.includes('reasoning') || model === 'gpt-5.2') ? undefined : 4096,
+            });
+            const choice = response.choices[0];
+            return {
+                ...choice?.message,
+                reasoning_content: (choice?.message as any)?.reasoning_content || ''
+            };
+        }
+
+        if (provider === 'anthropic') {
+            const anthropic = new Anthropic({ apiKey: key });
+
+            const systemMsg = messages.find(m => m.role === 'system')?.content || '';
+            const anthropicMessages = messages.filter(m => m.role !== 'system').map(m => {
+                if (m.role === 'tool') {
+                    return {
+                        role: 'user',
+                        content: [
+                            {
+                                type: 'tool_result',
+                                tool_use_id: m.tool_call_id,
+                                content: m.content,
+                            }
+                        ]
+                    };
+                }
+
+                if (m.role === 'assistant' && m.tool_calls?.length) {
+                    return {
+                        role: 'assistant',
+                        content: m.tool_calls.map((tc: any) => ({
+                            type: 'tool_use',
+                            id: tc.id,
+                            name: tc.function.name,
+                            input: JSON.parse(tc.function.arguments)
+                        }))
+                    };
+                }
+
+                return {
+                    role: m.role,
+                    content: m.content
+                };
+            });
+
+            const anthropicTools = TOOL_SCHEMAS.map((t: any) => ({
+                name: t.function.name,
+                description: t.function.description,
+                input_schema: t.function.parameters
+            }));
+
+            const response = await anthropic.messages.create({
+                model,
+                system: systemMsg,
+                messages: anthropicMessages as any,
+                tools: anthropicTools as any,
+                max_tokens: 4096,
+                temperature: 0.1,
+            });
+
+            const textContent = response.content.find((c: any) => c.type === 'text');
+            const toolUses = response.content.filter((c: any) => c.type === 'tool_use');
+
+            return {
+                role: 'assistant',
+                content: textContent ? (textContent as any).text : '',
+                tool_calls: toolUses.length > 0 ? toolUses.map((tu: any) => ({
+                    id: tu.id,
+                    type: 'function',
+                    function: {
+                        name: tu.name,
+                        arguments: JSON.stringify(tu.input)
+                    }
+                })) : undefined
+            };
+        }
+
+        if (provider === 'gemini') {
+            const ai = new GoogleGenAI({ apiKey: key });
+
+            const systemMsg = messages.find(m => m.role === 'system')?.content || '';
+            let contents = messages.filter(m => m.role !== 'system').map(m => {
+                if (m.role === 'tool') {
+                    // Gemini uses the original function name for the tool response
+                    const toolName = m.tool_call_id?.split('_')[0] || m.tool_call_id;
+                    return {
+                        role: 'function',
+                        parts: [{
+                            functionResponse: {
+                                name: toolName,
+                                response: { result: m.content }
+                            }
+                        }]
+                    };
+                }
+                if (m.role === 'assistant' && m.tool_calls?.length) {
+                    return {
+                        role: 'model',
+                        parts: m.tool_calls.map((tc: any) => ({
+                            functionCall: {
+                                name: tc.function.name,
+                                args: JSON.parse(tc.function.arguments)
+                            }
+                        }))
+                    };
+                }
+                return {
+                    role: m.role === 'user' ? 'user' : 'model',
+                    parts: [{ text: m.content }]
+                };
+            });
+
+            const geminiTools = [{
+                functionDeclarations: TOOL_SCHEMAS.map((t: any) => ({
+                    name: t.function.name,
+                    description: t.function.description,
+                    parameters: t.function.parameters
+                }))
+            }];
+
+            const response = await ai.models.generateContent({
+                model,
+                contents: contents as any,
+                config: {
+                    systemInstruction: systemMsg,
+                    tools: geminiTools,
+                    temperature: 0.1,
+                }
+            });
+
+            // Handle the fact that functionCalls and text may be methods or properties
+            const functionCalls = response.functionCalls || [];
+            const text = response.text || '';
+
+            return {
+                role: 'assistant',
+                content: text,
+                tool_calls: functionCalls.length > 0 ? functionCalls.map((fc: any) => ({
+                    id: `${fc.name}_${Math.random().toString(36).substring(7)}`,
+                    type: 'function',
+                    function: {
+                        name: fc.name,
+                        arguments: JSON.stringify(fc.args || {})
+                    }
+                })) : undefined
+            };
+        }
+
+        throw new Error(`Provider ${provider} not supported.`);
+    }
+
     // ── Tool execution router ────────────────────────────────────
 
     private async executeTool(
@@ -696,9 +927,19 @@ export class AgentService {
                     return { name, result: `Resolved conflict on '${args.file}' using '${args.strategy}'.` };
                 }
                 case 'read_file': {
-                    const content = await this.gitService.getFileContent(repoPath, args.path);
+                    const fs = require('fs');
+                    const nodePath = require('path');
+                    let filePath = args.path;
+                    // Support both absolute and repo-relative paths
+                    if (!nodePath.isAbsolute(filePath)) {
+                        filePath = nodePath.join(repoPath, filePath);
+                    }
+                    if (!fs.existsSync(filePath)) {
+                        return { name, result: `File not found: ${filePath}`, error: true };
+                    }
+                    const raw: string = fs.readFileSync(filePath, 'utf8');
                     // Truncate very large files
-                    const truncated = content.length > 8000 ? content.substring(0, 8000) + '\n... (truncated)' : content;
+                    const truncated = raw.length > 12000 ? raw.substring(0, 12000) + '\n... (truncated)' : raw;
                     return { name, result: truncated };
                 }
                 case 'list_files': {
@@ -749,6 +990,37 @@ export class AgentService {
                 case 'ui_edit_github_workflow': {
                     this.emit('agent:ui_action', { action: 'edit_github_workflow', payload: { filename: args.filename, content: args.content } });
                     return { name, result: `Opened workflow ${args.filename} in the visual workflow editor.` };
+                }
+                case 'write_file': {
+                    const fs = require('fs');
+                    const nodePath = require('path');
+                    let filePath = args.path;
+                    // If not absolute, treat as relative to the current repoPath
+                    if (!nodePath.isAbsolute(filePath)) {
+                        filePath = nodePath.join(repoPath, filePath);
+                    }
+                    // Ensure parent dirs exist
+                    fs.mkdirSync(nodePath.dirname(filePath), { recursive: true });
+                    fs.writeFileSync(filePath, args.content, 'utf8');
+                    return { name, result: `File written: ${filePath}` };
+                }
+                case 'check_path_exists': {
+                    const fs = require('fs');
+                    const nodePath = require('path');
+                    let checkPath = args.path;
+                    if (!nodePath.isAbsolute(checkPath)) {
+                        checkPath = nodePath.join(repoPath, checkPath);
+                    }
+                    if (!fs.existsSync(checkPath)) {
+                        return { name, result: JSON.stringify({ exists: false, type: 'none' }) };
+                    }
+                    const stat = fs.statSync(checkPath);
+                    return { name, result: JSON.stringify({ exists: true, type: stat.isDirectory() ? 'directory' : 'file' }) };
+                }
+                case 'add_repository': {
+                    // Emit a UI action to add the repo to the sidebar's tracked repos list
+                    this.emit('agent:ui_action', { action: 'add_repository', payload: { path: args.path } });
+                    return { name, result: `Repository at '${args.path}' added to the sidebar.` };
                 }
                 default:
                     return { name, result: `Unknown tool: ${name}`, error: true };

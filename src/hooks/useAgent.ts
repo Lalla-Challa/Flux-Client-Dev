@@ -78,6 +78,20 @@ export function useAgent() {
                 useUIStore.getState().setActiveTab(payload.tab);
             } else if (action === 'open_repository') {
                 useRepoStore.getState().setActiveRepo(payload.path);
+
+                // Sync terminal and print success
+                setTimeout(() => {
+                    const state = useUIStore.getState();
+                    const termId = state.activeTerminalId || (state.terminals.length > 0 ? state.terminals[0].id : null);
+                    if (termId) {
+                        const repoName = payload.path.split(/[/\\]/).pop() || payload.path;
+                        // Use cd /d for windows drive changes, or just cd. Both work in powershell safely if quoted.
+                        window.electronAPI.terminal.write(termId, `cd "${payload.path}"\r`);
+                        setTimeout(() => {
+                            window.electronAPI.terminal.write(termId, `\r\n\x1b[32m\x1b[1m✅ Switched to ${repoName}\x1b[0m\r\n\r`);
+                        }, 50);
+                    }
+                }, 100);
             } else if (action === 'show_notification') {
                 useUIStore.getState().showNotification(payload.type || 'info', payload.message);
             } else if (action === 'toggle_terminal') {
@@ -154,6 +168,20 @@ export function useAgent() {
                         useUIStore.getState().showNotification('error', `Failed to open workflow: ${err.message}`);
                     });
                 }
+            } else if (action === 'add_repository') {
+                // Scan the parent directory so the repo gets picked up
+                const repoPath: string = payload.path;
+                useRepoStore.getState().scanDirectory(repoPath)
+                    .then(() => {
+                        // After scan, force set it active so it appears selected in sidebar immediately
+                        useRepoStore.getState().setActiveRepo(repoPath);
+                        useUIStore.getState().showNotification('success', `Repository added: ${repoPath.split(/[/\\]/).pop()}`);
+                    })
+                    .catch(() => {
+                        // Fallback: just set it active and let the refresh handle the rest
+                        useRepoStore.getState().setActiveRepo(repoPath);
+                        useUIStore.getState().showNotification('info', `Opened repository: ${repoPath.split(/[/\\]/).pop()}`);
+                    });
             }
         });
 
@@ -165,8 +193,9 @@ export function useAgent() {
 
     // Check if API key is configured on mount
     useEffect(() => {
-        window.electronAPI?.agent?.getApiKey().then((key) => {
-            useAgentStore.getState().setConfigured(!!key);
+        window.electronAPI?.agent?.getConfig().then((config) => {
+            const hasValidKey = config?.provider && config?.keys?.[config.provider];
+            useAgentStore.getState().setConfigured(!!hasValidKey);
         });
     }, []);
 
@@ -241,8 +270,8 @@ export function useAgent() {
     }, []);
 
     // Set the API key
-    const setApiKey = useCallback(async (key: string) => {
-        await window.electronAPI.agent.setApiKey(key);
+    const setConfig = useCallback(async (config: any) => {
+        await window.electronAPI.agent.setConfig(config);
         useAgentStore.getState().setConfigured(true);
     }, []);
 
@@ -263,7 +292,7 @@ export function useAgent() {
         // Actions
         sendMessage,
         confirmAction,
-        setApiKey,
+        setConfig,
         clearConversation,
     };
 }

@@ -1,4 +1,6 @@
-import { execFile, ExecFileOptions } from 'child_process';
+import { execFile, ExecFileOptions, exec } from 'child_process';
+import { promisify } from 'util';
+const execAsync = promisify(exec);
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -1051,6 +1053,40 @@ export class GitService {
                     index,
                 };
             });
+    }
+
+    // ── LFS ──
+
+    async isLfsInstalled(): Promise<boolean> {
+        try {
+            const result = await execAsync('git lfs env');
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    async trackLfs(repoPath: string, pattern: string): Promise<void> {
+        const result = await this.exec(repoPath, ['lfs', 'track', pattern]);
+        if (result.code !== 0) {
+            throw new Error(`git lfs track failed: ${result.stderr}`);
+        }
+    }
+
+    async untrackLfs(repoPath: string, pattern: string): Promise<void> {
+        const result = await this.exec(repoPath, ['lfs', 'untrack', pattern]);
+        if (result.code !== 0) {
+            throw new Error(`git lfs untrack failed: ${result.stderr}`);
+        }
+    }
+
+    async getLfsTrackedFiles(repoPath: string): Promise<string[]> {
+        const result = await this.exec(repoPath, ['lfs', 'ls-files', '-n']);
+        if (result.code !== 0) {
+            // If LFS isn't initialized or fails, return empty
+            return [];
+        }
+        return result.stdout.split('\n').map(l => l.trim()).filter(Boolean);
     }
 }
 

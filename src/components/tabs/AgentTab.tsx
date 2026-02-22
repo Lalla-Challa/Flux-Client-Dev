@@ -3,6 +3,33 @@ import { useAgent } from '../../hooks/useAgent';
 import { Bot, Send, Trash2, AlertTriangle, CheckCircle, XCircle, Loader2, Key, Terminal, Wrench, ChevronDown, ChevronRight, Copy, Check } from 'lucide-react';
 import type { AgentMessage } from '../../stores/agent.store';
 
+const PROVIDERS: Record<string, { name: string; models: string[] }> = {
+    groq: {
+        name: 'Groq',
+        models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'openai/gpt-oss-120b', 'meta-llama/llama-4-scout-17b-16e-instruct']
+    },
+    deepseek: {
+        name: 'DeepSeek',
+        models: ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner']
+    },
+    anthropic: {
+        name: 'Anthropic',
+        models: ['claude-4-6-sonnet-20260217', 'claude-4-5-haiku-20251015', 'claude-4-6-opus-20260205']
+    },
+    openai: {
+        name: 'OpenAI',
+        models: ['gpt-5-mini', 'gpt-5-nano', 'gpt-5.2']
+    },
+    grok: {
+        name: 'xAI (Grok)',
+        models: ['grok-4', 'grok-4-1-fast-non-reasoning', 'grok-4-1-fast-reasoning']
+    },
+    gemini: {
+        name: 'Google Gemini',
+        models: ['gemini-3-pro', 'gemini-3-flash', 'gemini-3.1-pro']
+    }
+};
+
 export function AgentTab() {
     const {
         isRunning,
@@ -12,9 +39,15 @@ export function AgentTab() {
         currentTool,
         sendMessage,
         confirmAction,
-        setApiKey,
+        setConfig,
         clearConversation,
     } = useAgent();
+
+    const [configState, setConfigState] = useState<any>({
+        provider: 'groq',
+        model: 'llama-3.3-70b-versatile',
+        keys: {}
+    });
 
     const [apiKeyInput, setApiKeyInput] = useState('');
     const [showKeyForm, setShowKeyForm] = useState(!isConfigured);
@@ -25,7 +58,15 @@ export function AgentTab() {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    // Show key form when not configured
+    useEffect(() => {
+        window.electronAPI?.agent?.getConfig().then((existing) => {
+            if (existing) {
+                setConfigState(existing);
+                setApiKeyInput(existing.keys?.[existing.provider] || '');
+            }
+        });
+    }, []);
+
     useEffect(() => {
         if (!isConfigured) setShowKeyForm(true);
     }, [isConfigured]);
@@ -33,9 +74,25 @@ export function AgentTab() {
     const handleSaveKey = async () => {
         const key = apiKeyInput.trim();
         if (!key) return;
-        await setApiKey(key);
-        setApiKeyInput('');
+
+        const newConfig = {
+            ...configState,
+            keys: { ...configState.keys, [configState.provider]: key }
+        };
+
+        await setConfig(newConfig);
+        setConfigState(newConfig);
         setShowKeyForm(false);
+    };
+
+    const handleProviderChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const newProvider = e.target.value;
+        setConfigState((prev: any) => ({
+            ...prev,
+            provider: newProvider,
+            model: PROVIDERS[newProvider].models[0]
+        }));
+        setApiKeyInput(configState.keys?.[newProvider] || '');
     };
 
     return (
@@ -80,13 +137,34 @@ export function AgentTab() {
                 <div className="mx-4 mt-3 p-3 bg-zinc-900 border border-zinc-700 rounded-lg shrink-0">
                     <div className="flex items-center gap-1.5 mb-2">
                         <Key className="w-3.5 h-3.5 text-violet-400" />
-                        <span className="text-xs font-semibold text-zinc-200">Groq API Key</span>
+                        <span className="text-xs font-semibold text-zinc-200">AI Provider Settings</span>
                         {isConfigured && <span className="text-[10px] text-emerald-400 ml-1">✓ Saved</span>}
                     </div>
+
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                        <select
+                            value={configState.provider}
+                            onChange={handleProviderChange}
+                            className="bg-zinc-800 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-violet-500"
+                        >
+                            {Object.entries(PROVIDERS).map(([key, p]) => (
+                                <option key={key} value={key}>{p.name}</option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={configState.model}
+                            onChange={(e) => setConfigState({ ...configState, model: e.target.value })}
+                            className="bg-zinc-800 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-violet-500"
+                        >
+                            {PROVIDERS[configState.provider]?.models.map((m: string) => (
+                                <option key={m} value={m}>{m}</option>
+                            ))}
+                        </select>
+                    </div>
+
                     <p className="text-[11px] text-zinc-500 mb-2">
-                        Get your free key at{' '}
-                        <span className="text-violet-400 font-mono">console.groq.com</span>
-                        . Stored locally — never sent to anyone except Groq.
+                        Stored locally — never sent to anyone except {PROVIDERS[configState.provider]?.name || 'the provider'}.
                     </p>
                     <div className="flex gap-2">
                         <input
@@ -94,7 +172,7 @@ export function AgentTab() {
                             value={apiKeyInput}
                             onChange={(e) => setApiKeyInput(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSaveKey()}
-                            placeholder={isConfigured ? 'Enter new key to replace...' : 'gsk_...'}
+                            placeholder={`Enter ${PROVIDERS[configState.provider]?.name || 'API'} Key...`}
                             className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-violet-500 font-mono"
                         />
                         <button
@@ -102,7 +180,7 @@ export function AgentTab() {
                             disabled={!apiKeyInput.trim()}
                             className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                            Save
+                            Save Config
                         </button>
                     </div>
                 </div>

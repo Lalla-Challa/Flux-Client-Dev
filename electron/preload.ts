@@ -100,6 +100,12 @@ export interface ElectronAPI {
         reflog: (repoPath: string, limit?: number) => Promise<any[]>;
         setIdentity: (name: string, email: string) => Promise<void>;
         clearIdentity: () => Promise<void>;
+
+        // LFS
+        isLfsInstalled: () => Promise<boolean>;
+        lfsTrack: (repoPath: string, pattern: string) => Promise<void>;
+        lfsUntrack: (repoPath: string, pattern: string) => Promise<void>;
+        getLfsTrackedFiles: (repoPath: string) => Promise<string[]>;
     };
 
     // Dialog
@@ -135,11 +141,10 @@ export interface ElectronAPI {
         set: (key: string, value: any) => Promise<void>;
     };
 
-    // Agent
     agent: {
         run: (userMessage: string, uiState: any, token: string | null) => Promise<string>;
-        setApiKey: (key: string) => Promise<void>;
-        getApiKey: () => Promise<string | null>;
+        setConfig: (config: any) => Promise<void>;
+        getConfig: () => Promise<any>;
         confirmAction: (approved: boolean) => Promise<void>;
         clearHistory: () => Promise<void>;
         onThinking: (callback: (data: { iteration: number }) => void) => void;
@@ -383,6 +388,12 @@ const electronAPI: ElectronAPI = {
         reflog: (repoPath: string, limit?: number) => ipcRenderer.invoke('git:reflog', repoPath, limit),
         setIdentity: (name: string, email: string) => ipcRenderer.invoke('git:setIdentity', name, email),
         clearIdentity: () => ipcRenderer.invoke('git:clearIdentity'),
+
+        // LFS
+        isLfsInstalled: () => ipcRenderer.invoke('git:isLfsInstalled'),
+        lfsTrack: (repoPath: string, pattern: string) => ipcRenderer.invoke('git:lfsTrack', repoPath, pattern),
+        lfsUntrack: (repoPath: string, pattern: string) => ipcRenderer.invoke('git:lfsUntrack', repoPath, pattern),
+        getLfsTrackedFiles: (repoPath: string) => ipcRenderer.invoke('git:getLfsTrackedFiles', repoPath),
     },
 
     dialog: {
@@ -415,8 +426,8 @@ const electronAPI: ElectronAPI = {
     agent: {
         run: (userMessage: string, uiState: any, token: string | null) =>
             ipcRenderer.invoke('agent:run', userMessage, uiState, token),
-        setApiKey: (key: string) => ipcRenderer.invoke('agent:setApiKey', key),
-        getApiKey: () => ipcRenderer.invoke('agent:getApiKey'),
+        setConfig: (config: any) => ipcRenderer.invoke('agent:setConfig', config),
+        getConfig: () => ipcRenderer.invoke('agent:getConfig'),
         confirmAction: (approved: boolean) => ipcRenderer.invoke('agent:confirmAction', approved),
         clearHistory: () => ipcRenderer.invoke('agent:clearHistory'),
         onThinking: (callback: (data: any) => void) => {
