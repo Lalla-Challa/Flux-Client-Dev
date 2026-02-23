@@ -41,7 +41,7 @@ Flux Client is a powerful, cross-platform Git client designed to streamline your
 1.  **Clone the repository**
 
     ```bash
-    git clone https://github.com/GitFlow/flux-client.git
+    git clone https://github.com/Lalla-Challa/Flux-Client-Dev
     cd flux-client
     ```
 
