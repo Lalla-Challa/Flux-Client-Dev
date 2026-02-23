@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as fsPromises from 'fs/promises';
 import * as path from 'path';
 import { GitService } from './git.service';
 
@@ -109,7 +110,7 @@ export class RepoScannerService {
         if (depth > maxDepth) return;
 
         try {
-            const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+            const entries = await fsPromises.readdir(dirPath, { withFileTypes: true });
 
             // Check if this directory contains a .git folder
             const hasGit = entries.some(
@@ -131,7 +132,7 @@ export class RepoScannerService {
 
                 try {
                     // Check permissions before recursing
-                    fs.accessSync(childPath, fs.constants.R_OK);
+                    await fsPromises.access(childPath, fs.constants.R_OK);
                     await this.findGitRepos(childPath, results, depth + 1, maxDepth);
                 } catch {
                     // Skip inaccessible directories

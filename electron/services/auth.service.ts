@@ -253,6 +253,7 @@ export class AuthService {
 
     async getAccounts(): Promise<Account[]> {
         const accounts = this.store.get<StoredAccount[]>('accounts', []);
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         return accounts.map(({ token, ...account }) => ({
             ...account,
             // Backfill for accounts stored before displayName/email were added

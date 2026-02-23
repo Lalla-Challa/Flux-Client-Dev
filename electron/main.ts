@@ -615,7 +615,7 @@ function registerIpcHandlers(): void {
                     return config;
                 }
             }
-        } catch { }
+        } catch { /* ignore */ }
         return null;
     });
     ipcMain.handle('agent:confirmAction', async (_event, approved: boolean) => {

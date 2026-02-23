@@ -1059,7 +1059,7 @@ export class GitService {
 
     async isLfsInstalled(): Promise<boolean> {
         try {
-            const result = await execAsync('git lfs env');
+            await execAsync('git lfs env');
             return true;
         } catch {
             return false;

@@ -782,7 +782,7 @@ export class AgentService {
             const ai = new GoogleGenAI({ apiKey: key });
 
             const systemMsg = messages.find(m => m.role === 'system')?.content || '';
-            let contents = messages.filter(m => m.role !== 'system').map(m => {
+            const contents = messages.filter(m => m.role !== 'system').map(m => {
                 if (m.role === 'tool') {
                     // Gemini uses the original function name for the tool response
                     const toolName = m.tool_call_id?.split('_')[0] || m.tool_call_id;
